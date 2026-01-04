@@ -16,6 +16,7 @@ export interface RequestActionsDropdownProps {
     title: string;
     author: string;
     status: string;
+    torrentUrl?: string | null;
   };
   onDelete: (requestId: string, title: string) => void;
   onManualSearch: (requestId: string) => Promise<void>;
@@ -38,6 +39,7 @@ export function RequestActionsDropdown({
   const canSearch = ['pending', 'failed', 'awaiting_search'].includes(request.status);
   const canCancel = ['pending', 'searching', 'downloading'].includes(request.status);
   const canDelete = true; // Admins can always delete
+  const canViewSource = !!request.torrentUrl && ['downloading', 'processing', 'downloaded', 'available'].includes(request.status);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -156,8 +158,35 @@ export function RequestActionsDropdown({
               </button>
             )}
 
-            {/* Divider if we have search actions and other actions */}
-            {canSearch && (canCancel || canDelete) && (
+            {/* View Source */}
+            {canViewSource && (
+              <a
+                href={request.torrentUrl!}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={() => setIsOpen(false)}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                role="menuitem"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+                  />
+                </svg>
+                View Source
+              </a>
+            )}
+
+            {/* Divider if we have search/view actions and other actions */}
+            {(canSearch || canViewSource) && (canCancel || canDelete) && (
               <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
             )}
 

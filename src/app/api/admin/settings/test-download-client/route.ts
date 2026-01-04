@@ -12,7 +12,15 @@ export async function POST(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
     return requireAdmin(req, async () => {
       try {
-        const { type, url, username, password } = await request.json();
+        const {
+          type,
+          url,
+          username,
+          password,
+          remotePathMappingEnabled,
+          remotePath,
+          localPath,
+        } = await request.json();
 
         if (!type || !url || !username || !password) {
           return NextResponse.json(
@@ -51,6 +59,33 @@ export async function POST(request: NextRequest) {
           username,
           actualPassword
         );
+
+        // If path mapping enabled, validate local path exists
+        if (remotePathMappingEnabled) {
+          if (!remotePath || !localPath) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: 'Remote path and local path are required when path mapping is enabled',
+              },
+              { status: 400 }
+            );
+          }
+
+          // Check if local path is accessible
+          const fs = await import('fs/promises');
+          try {
+            await fs.access(localPath, fs.constants.R_OK);
+          } catch (accessError) {
+            return NextResponse.json(
+              {
+                success: false,
+                error: `Local path "${localPath}" is not accessible. Please verify the path exists and has correct permissions.`,
+              },
+              { status: 400 }
+            );
+          }
+        }
 
         return NextResponse.json({
           success: true,

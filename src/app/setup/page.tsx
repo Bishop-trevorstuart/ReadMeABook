@@ -77,6 +77,9 @@ interface SetupState {
   downloadClientUrl: string;
   downloadClientUsername: string;
   downloadClientPassword: string;
+  remotePathMappingEnabled: boolean;
+  remotePath: string;
+  localPath: string;
   downloadDir: string;
   mediaDir: string;
   metadataTaggingEnabled: boolean;
@@ -142,6 +145,9 @@ export default function SetupWizard() {
     downloadClientUrl: '',
     downloadClientUsername: 'admin',
     downloadClientPassword: '',
+    remotePathMappingEnabled: false,
+    remotePath: '',
+    localPath: '',
     downloadDir: '/downloads',
     mediaDir: '/media/audiobooks',
     metadataTaggingEnabled: true,
@@ -211,6 +217,9 @@ export default function SetupWizard() {
           url: state.downloadClientUrl,
           username: state.downloadClientUsername,
           password: state.downloadClientPassword,
+          remotePathMappingEnabled: state.remotePathMappingEnabled,
+          remotePath: state.remotePath,
+          localPath: state.localPath,
         },
         paths: {
           download_dir: state.downloadDir,
@@ -494,6 +503,9 @@ export default function SetupWizard() {
           downloadClientUrl={state.downloadClientUrl}
           downloadClientUsername={state.downloadClientUsername}
           downloadClientPassword={state.downloadClientPassword}
+          remotePathMappingEnabled={state.remotePathMappingEnabled}
+          remotePath={state.remotePath}
+          localPath={state.localPath}
           onUpdate={updateField}
           onNext={() => goToStep(currentStepNumber + 1)}
           onBack={() => goToStep(currentStepNumber - 1)}

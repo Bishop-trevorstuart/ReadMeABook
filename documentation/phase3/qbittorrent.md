@@ -48,7 +48,12 @@ Free, open-source BitTorrent client with comprehensive Web API.
 - `download_client_password` - qBittorrent password
 - `download_dir` - Download save path (passed to qBittorrent for all torrents)
 
-Validation: All fields checked before service initialization.
+**Optional (Remote Path Mapping):**
+- `download_client_remote_path_mapping_enabled` - Enable path mapping (boolean as string "true"/"false")
+- `download_client_remote_path` - Remote path prefix from qBittorrent
+- `download_client_local_path` - Local path prefix for ReadMeABook
+
+Validation: All required fields checked before service initialization. Path mapping fields validated when enabled.
 
 **Singleton Invalidation:**
 Service uses singleton pattern for performance. When settings change (via admin settings page), singleton is invalidated to force reload:
@@ -71,6 +76,53 @@ Service uses singleton pattern for performance. When settings change (via admin 
 2. Edit: Updates save path to match current config (handles user changing settings)
 
 This prevents issues where category retains old save path after user changes `download_dir` setting.
+
+## Remote Path Mapping
+
+**Use Case:** qBittorrent runs on different machine/container with different filesystem perspective.
+
+**Example Scenario:**
+- qBittorrent reports: `/remote/mnt/d/done/Audiobook.Name`
+- ReadMeABook needs: `/downloads/Audiobook.Name`
+- Mapping: Remote `/remote/mnt/d/done` → Local `/downloads`
+
+**Configuration:**
+1. Admin Settings → Download Client → Enable Remote Path Mapping
+2. Enter remote path (as reported by qBittorrent)
+3. Enter local path (accessible to ReadMeABook)
+4. Test connection validates local path exists
+5. Save settings
+
+**Implementation:**
+- `PathMapper` utility (`src/lib/utils/path-mapper.ts`) handles transformation
+- Applied in `monitor-download.processor.ts` when download completes
+- Applied in `retry-failed-imports.processor.ts` for failed imports
+- Uses simple prefix replacement with path normalization
+- Graceful fallback: if path doesn't match remote prefix, returns unchanged
+
+**Path Transformation:**
+```typescript
+// Input from qBittorrent
+qbPath = "/remote/mnt/d/done/Audiobook.Name"
+
+// Config
+remotePath = "/remote/mnt/d/done"
+localPath = "/downloads"
+
+// Output (used for file organization)
+organizePath = "/downloads/Audiobook.Name"
+```
+
+**Validation:**
+- Local path accessibility checked during test connection
+- Prevents misconfiguration before save
+- Warning shown for existing downloads (mapping only affects new downloads)
+
+**Behavior:**
+- Mapping only applies when enabled
+- If path doesn't start with remote prefix, returns original (logs warning)
+- Path normalization handles trailing slashes, backslashes, redundant separators
+- Works with both `content_path` and constructed `save_path + name`
 
 ## Data Models
 
@@ -107,6 +159,11 @@ type TorrentState = 'downloading' | 'uploading' | 'stalledDL' |
    - Checking existing categories before create/edit (avoid unnecessary 409 errors)
    - Invalidating service singleton when settings change (forces config reload)
    - Settings API calls `invalidateQBittorrentService()` after updating paths or credentials
+**10. Remote seedbox path mismatch** - qBittorrent on remote machine reports different filesystem paths. Fixed by:
+   - Remote path mapping feature with toggle in admin settings and setup wizard
+   - PathMapper utility for prefix replacement transformation
+   - Local path validation during test connection
+   - Applied in download completion and import retry processors
 
 ## Tech Stack
 

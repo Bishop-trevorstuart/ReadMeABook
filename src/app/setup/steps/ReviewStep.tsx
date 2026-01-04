@@ -9,13 +9,32 @@ import { Button } from '@/components/ui/Button';
 
 interface ReviewStepProps {
   config: {
+    backendMode: 'plex' | 'audiobookshelf';
+
+    // Plex config
     plexUrl: string;
     plexLibraryId: string;
+
+    // Audiobookshelf config
+    absUrl: string;
+    absLibraryId: string;
+
+    // Auth config (ABS mode)
+    authMethod: 'oidc' | 'manual' | 'both';
+    oidcProviderName: string;
+    adminUsername: string;
+
+    // Common config
     prowlarrUrl: string;
     downloadClient: 'qbittorrent' | 'transmission';
     downloadClientUrl: string;
     downloadDir: string;
     mediaDir: string;
+
+    // BookDate
+    bookdateConfigured: boolean;
+    bookdateProvider: string;
+    bookdateModel: string;
   };
   loading: boolean;
   error: string | null;
@@ -58,26 +77,82 @@ export function ReviewStep({ config, loading, error, onComplete, onBack }: Revie
       )}
 
       <div className="space-y-4">
-        {/* Plex Configuration */}
-        <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
-            Plex Media Server
-          </h3>
-          <dl className="space-y-2">
-            <div className="flex justify-between">
-              <dt className="text-sm text-gray-600 dark:text-gray-400">Server URL:</dt>
-              <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                {config.plexUrl}
-              </dd>
+        {/* Backend Configuration - Conditional based on mode */}
+        {config.backendMode === 'plex' ? (
+          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              Plex Media Server
+            </h3>
+            <dl className="space-y-2">
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-600 dark:text-gray-400">Server URL:</dt>
+                <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {config.plexUrl}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-600 dark:text-gray-400">Library ID:</dt>
+                <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {config.plexLibraryId}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        ) : (
+          <>
+            {/* Audiobookshelf Configuration */}
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                Audiobookshelf
+              </h3>
+              <dl className="space-y-2">
+                <div className="flex justify-between">
+                  <dt className="text-sm text-gray-600 dark:text-gray-400">Server URL:</dt>
+                  <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {config.absUrl}
+                  </dd>
+                </div>
+                <div className="flex justify-between">
+                  <dt className="text-sm text-gray-600 dark:text-gray-400">Library ID:</dt>
+                  <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                    {config.absLibraryId}
+                  </dd>
+                </div>
+              </dl>
             </div>
-            <div className="flex justify-between">
-              <dt className="text-sm text-gray-600 dark:text-gray-400">Library ID:</dt>
-              <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
-                {config.plexLibraryId}
-              </dd>
+
+            {/* Authentication Configuration */}
+            <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+              <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
+                Authentication
+              </h3>
+              <dl className="space-y-2">
+                <div className="flex justify-between">
+                  <dt className="text-sm text-gray-600 dark:text-gray-400">Auth Method:</dt>
+                  <dd className="text-sm font-medium text-gray-900 dark:text-gray-100 capitalize">
+                    {config.authMethod === 'both' ? 'OIDC + Manual Registration' : config.authMethod === 'oidc' ? 'OIDC' : 'Manual Registration'}
+                  </dd>
+                </div>
+                {(config.authMethod === 'oidc' || config.authMethod === 'both') && (
+                  <div className="flex justify-between">
+                    <dt className="text-sm text-gray-600 dark:text-gray-400">OIDC Provider:</dt>
+                    <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {config.oidcProviderName}
+                    </dd>
+                  </div>
+                )}
+                {(config.authMethod === 'manual' || config.authMethod === 'both') && (
+                  <div className="flex justify-between">
+                    <dt className="text-sm text-gray-600 dark:text-gray-400">Admin Username:</dt>
+                    <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                      {config.adminUsername}
+                    </dd>
+                  </div>
+                )}
+              </dl>
             </div>
-          </dl>
-        </div>
+          </>
+        )}
 
         {/* Prowlarr Configuration */}
         <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
@@ -135,6 +210,29 @@ export function ReviewStep({ config, loading, error, onComplete, onBack }: Revie
             </div>
           </dl>
         </div>
+
+        {/* BookDate Configuration (Optional) */}
+        {config.bookdateConfigured && (
+          <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-3">
+              BookDate AI Recommendations
+            </h3>
+            <dl className="space-y-2">
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-600 dark:text-gray-400">Provider:</dt>
+                <dd className="text-sm font-medium text-gray-900 dark:text-gray-100 capitalize">
+                  {config.bookdateProvider}
+                </dd>
+              </div>
+              <div className="flex justify-between">
+                <dt className="text-sm text-gray-600 dark:text-gray-400">Model:</dt>
+                <dd className="text-sm font-medium text-gray-900 dark:text-gray-100">
+                  {config.bookdateModel}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        )}
       </div>
 
       <div className="bg-blue-50 dark:bg-blue-900/20 rounded-lg p-4">

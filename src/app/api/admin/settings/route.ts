@@ -72,6 +72,9 @@ export async function GET(request: NextRequest) {
         username: configMap.get('download_client_username') || '',
         password: maskValue('password', configMap.get('download_client_password')),
         seedingTimeMinutes: parseInt(configMap.get('seeding_time_minutes') || '0'),
+        remotePathMappingEnabled: configMap.get('download_client_remote_path_mapping_enabled') === 'true',
+        remotePath: configMap.get('download_client_remote_path') || '',
+        localPath: configMap.get('download_client_local_path') || '',
       },
       paths: {
         downloadDir: configMap.get('download_dir') || '/downloads',

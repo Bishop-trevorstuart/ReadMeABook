@@ -61,6 +61,8 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
         torrentName: torrent.title,
         torrentHash: torrent.infoHash || torrentHash,
         torrentSizeBytes: torrent.size,
+        torrentUrl: torrent.guid, // Source URL for the torrent page
+        magnetLink: torrent.downloadUrl, // Download URL (magnet or .torrent)
         seeders: torrent.seeders,
         leechers: torrent.leechers || 0,
         downloadStatus: 'downloading',

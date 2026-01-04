@@ -21,6 +21,7 @@ interface RecentRequest {
   createdAt: Date;
   completedAt: Date | null;
   errorMessage: string | null;
+  torrentUrl?: string | null;
 }
 
 interface RecentRequestsTableProps {
@@ -273,6 +274,7 @@ export function RecentRequestsTable({ requests }: RecentRequestsTableProps) {
                       title: request.title,
                       author: request.author,
                       status: request.status,
+                      torrentUrl: request.torrentUrl,
                     }}
                     onDelete={handleDeleteClick}
                     onManualSearch={handleManualSearch}

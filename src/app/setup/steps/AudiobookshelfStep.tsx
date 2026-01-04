@@ -217,7 +217,7 @@ export function AudiobookshelfStep({
               <option value="">Select a library...</option>
               {libraries.map((lib) => (
                 <option key={lib.id} value={lib.id}>
-                  {lib.name} ({lib.itemCount} items)
+                  {lib.name}
                 </option>
               ))}
             </select>

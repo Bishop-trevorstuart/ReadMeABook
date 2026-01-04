@@ -79,10 +79,10 @@ export async function POST(request: NextRequest) {
       // Rank torrents using the ranking algorithm
       const rankedResults = rankTorrents(results, { title, author });
 
-      // Filter out results below minimum score threshold (30/100)
-      const filteredResults = rankedResults.filter(result => result.score >= 30);
+      // Filter out results below minimum score threshold (50/100)
+      const filteredResults = rankedResults.filter(result => result.score >= 50);
 
-      console.log(`[AudiobookSearch] Ranked ${rankedResults.length} results, ${filteredResults.length} above threshold (30/100)`);
+      console.log(`[AudiobookSearch] Ranked ${rankedResults.length} results, ${filteredResults.length} above threshold (50/100)`);
 
       // Log top 3 results with detailed score breakdown for debugging
       const top3 = filteredResults.slice(0, 3);

@@ -8,6 +8,8 @@ import { MonitorDownloadPayload, getJobQueueService } from '../services/job-queu
 import { prisma } from '../db';
 import { getQBittorrentService } from '../integrations/qbittorrent.service';
 import { createJobLogger, JobLogger } from '../utils/job-logger';
+import { PathMapper } from '../utils/path-mapper';
+import { getConfigService } from '../services/config.service';
 
 /**
  * Helper function to retry getTorrent with exponential backoff
@@ -94,16 +96,32 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
       // Determine actual content path for file organization
       // Priority 1: Use content_path if provided by qBittorrent (most reliable)
       // Priority 2: Construct path using path.join() for proper normalization
-      const organizePath = torrent.content_path
+      const qbPath = torrent.content_path
         ? torrent.content_path
         : path.join(torrent.save_path, torrent.name);
+
+      // Load path mapping configuration
+      const configService = getConfigService();
+      const pathMappingConfig = await configService.getMany([
+        'download_client_remote_path_mapping_enabled',
+        'download_client_remote_path',
+        'download_client_local_path',
+      ]);
+
+      // Apply remote-to-local path transformation if enabled
+      const organizePath = PathMapper.transform(qbPath, {
+        enabled: pathMappingConfig.download_client_remote_path_mapping_enabled === 'true',
+        remotePath: pathMappingConfig.download_client_remote_path || '',
+        localPath: pathMappingConfig.download_client_local_path || '',
+      });
 
       await logger?.info(`Download completed`, {
         filesCount: files.length,
         torrentName: torrent.name,
         savePath: torrent.save_path,
         contentPath: torrent.content_path || '(not provided)',
-        organizePath,
+        qbittorrentPath: qbPath,
+        organizePath: organizePath !== qbPath ? `${organizePath} (mapped)` : organizePath,
       });
 
       // Update download history to completed

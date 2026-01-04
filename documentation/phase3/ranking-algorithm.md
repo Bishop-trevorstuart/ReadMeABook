@@ -7,16 +7,31 @@ Evaluates and scores torrents to automatically select best audiobook download.
 ## Scoring Criteria (100 points max)
 
 **1. Title/Author Match (50 pts max) - MOST IMPORTANT**
-- Title matching: 0-35 pts
-  - Complete title match (followed by metadata: " by", " [", " -") → 35 pts
-  - Title is substring but continues with more words → fuzzy similarity (partial credit)
-  - Prevents series confusion: "The Housemaid" vs "The Housemaid's Secret"
-  - No exact match → fuzzy similarity (partial credit)
-- Author presence: 0-15 pts
-  - Exact substring match → proportional credit
-  - No exact match → fuzzy similarity (partial credit)
-  - Splits authors on delimiters (comma, &, "and", " - ")
-  - Filters out roles ("translator", "narrator")
+
+**Multi-Stage Matching:**
+
+**Stage 1: Word Coverage Filter (MANDATORY)**
+- Extracts significant words from request (filters stop words: "the", "a", "an", "of", "on", "in", "at", "by", "for")
+- Calculates coverage: % of request words found in torrent title
+- **Hard requirement: 80%+ coverage or automatic 0 score**
+- Example: "The Wild Robot on the Island" → ["wild", "robot", "island"]
+  - "The Wild Robot" → ["wild", "robot"] → 2/3 = 67% → **REJECTED**
+  - "The Wild Robot on the Island" → 3/3 = 100% → **PASSES**
+- Prevents wrong series books from matching
+
+**Stage 2: Title Matching (0-35 pts)**
+- Only scored if Stage 1 passes
+- Complete title match (followed by metadata: " by", " [", " -") → 35 pts
+- Title is substring but continues with more words → fuzzy similarity (partial credit)
+- Prevents series confusion: "The Housemaid" vs "The Housemaid's Secret"
+- No exact match → fuzzy similarity (partial credit)
+
+**Stage 3: Author Matching (0-15 pts)**
+- Exact substring match → proportional credit
+- No exact match → fuzzy similarity (partial credit)
+- Splits authors on delimiters (comma, &, "and", " - ")
+- Filters out roles ("translator", "narrator")
+
 - Order-independent, no structure assumptions
 - Ensures correct book is selected over wrong book with better format
 

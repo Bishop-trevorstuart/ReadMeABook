@@ -98,14 +98,14 @@ export async function processSearchIndexers(payload: SearchIndexersPayload): Pro
       durationMinutes: undefined, // We don't have duration from Audible
     });
 
-    // Filter out results below minimum score threshold (30/100)
-    const filteredResults = rankedResults.filter(result => result.score >= 30);
+    // Filter out results below minimum score threshold (50/100)
+    const filteredResults = rankedResults.filter(result => result.score >= 50);
 
-    await logger?.info(`Ranked ${rankedResults.length} results, ${filteredResults.length} above threshold (30/100)`);
+    await logger?.info(`Ranked ${rankedResults.length} results, ${filteredResults.length} above threshold (50/100)`);
 
     if (filteredResults.length === 0) {
       // No quality results found - queue for re-search instead of failing
-      await logger?.warn(`No quality matches found for request ${requestId} (all below 30/100), marking as awaiting_search`);
+      await logger?.warn(`No quality matches found for request ${requestId} (all below 50/100), marking as awaiting_search`);
 
       await prisma.request.update({
         where: { id: requestId },

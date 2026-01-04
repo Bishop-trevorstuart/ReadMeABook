@@ -14,7 +14,10 @@ interface DownloadClientStepProps {
   downloadClientUrl: string;
   downloadClientUsername: string;
   downloadClientPassword: string;
-  onUpdate: (field: string, value: string) => void;
+  remotePathMappingEnabled: boolean;
+  remotePath: string;
+  localPath: string;
+  onUpdate: (field: string, value: any) => void;
   onNext: () => void;
   onBack: () => void;
 }
@@ -24,6 +27,9 @@ export function DownloadClientStep({
   downloadClientUrl,
   downloadClientUsername,
   downloadClientPassword,
+  remotePathMappingEnabled,
+  remotePath,
+  localPath,
   onUpdate,
   onNext,
   onBack,
@@ -48,6 +54,9 @@ export function DownloadClientStep({
           url: downloadClientUrl,
           username: downloadClientUsername,
           password: downloadClientPassword,
+          remotePathMappingEnabled,
+          remotePath,
+          localPath,
         }),
       });
 
@@ -174,6 +183,68 @@ export function DownloadClientStep({
             onChange={(e) => onUpdate('downloadClientPassword', e.target.value)}
             autoComplete="current-password"
           />
+        </div>
+
+        {/* Remote Path Mapping */}
+        <div className="mt-4 bg-gray-50 dark:bg-gray-800 rounded-lg p-4 border border-gray-200 dark:border-gray-700">
+          <div className="flex items-start gap-4">
+            <input
+              type="checkbox"
+              id="remote-path-mapping-setup"
+              checked={remotePathMappingEnabled}
+              onChange={(e) => onUpdate('remotePathMappingEnabled', e.target.checked)}
+              className="mt-1 h-5 w-5 rounded border-gray-300 text-blue-600 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700"
+            />
+            <div className="flex-1">
+              <label
+                htmlFor="remote-path-mapping-setup"
+                className="block text-sm font-medium text-gray-900 dark:text-gray-100 cursor-pointer"
+              >
+                Enable Remote Path Mapping
+              </label>
+              <p className="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                Use this when qBittorrent runs on a different machine or uses different mount points (e.g., remote seedbox, Docker containers)
+              </p>
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-2 font-mono">
+                Example: Remote <span className="text-blue-600 dark:text-blue-400">/remote/mnt/d/done</span> → Local <span className="text-green-600 dark:text-green-400">/downloads</span>
+              </p>
+
+              {/* Conditional Fields */}
+              {remotePathMappingEnabled && (
+                <div className="mt-4 space-y-4">
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Remote Path (from qBittorrent)
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="/remote/mnt/d/done"
+                      value={remotePath}
+                      onChange={(e) => onUpdate('remotePath', e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      The path prefix as reported by qBittorrent
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Local Path (for ReadMeABook)
+                    </label>
+                    <Input
+                      type="text"
+                      placeholder="/downloads"
+                      value={localPath}
+                      onChange={(e) => onUpdate('localPath', e.target.value)}
+                    />
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      The actual path where files are accessible
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <Button

@@ -9,6 +9,7 @@ import { prisma } from '../db';
 import { createJobLogger } from '../utils/job-logger';
 import { getJobQueueService } from '../services/job-queue.service';
 import { getConfigService } from '../services/config.service';
+import { PathMapper } from '../utils/path-mapper';
 
 export interface RetryFailedImportsPayload {
   jobId?: string;
@@ -22,6 +23,20 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
   await logger?.info('Starting retry job for requests awaiting import...');
 
   try {
+    // Load path mapping configuration once
+    const configService = getConfigService();
+    const pathMappingConfig = await configService.getMany([
+      'download_client_remote_path_mapping_enabled',
+      'download_client_remote_path',
+      'download_client_local_path',
+    ]);
+
+    const mappingConfig = {
+      enabled: pathMappingConfig.download_client_remote_path_mapping_enabled === 'true',
+      remotePath: pathMappingConfig.download_client_remote_path || '',
+      localPath: pathMappingConfig.download_client_local_path || '',
+    };
+
     // Find all active requests in awaiting_import status
     const requests = await prisma.request.findMany({
       where: {
@@ -73,8 +88,12 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
             const { getQBittorrentService } = await import('../integrations/qbittorrent.service');
             const qbt = await getQBittorrentService();
             const torrent = await qbt.getTorrent(downloadHistory.downloadClientId);
-            downloadPath = `${torrent.save_path}/${torrent.name}`;
-            await logger?.info(`Got download path from qBittorrent for request ${request.id}: ${downloadPath}`);
+            const qbPath = `${torrent.save_path}/${torrent.name}`;
+            downloadPath = PathMapper.transform(qbPath, mappingConfig);
+            await logger?.info(
+              `Got download path from qBittorrent for request ${request.id}: ${qbPath}` +
+              (downloadPath !== qbPath ? ` → ${downloadPath} (mapped)` : '')
+            );
           } catch (qbtError) {
             // Torrent not found in qBittorrent - try to construct path from config
             await logger?.warn(`Torrent not found in qBittorrent for request ${request.id}, falling back to configured path`);
@@ -85,7 +104,6 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
               continue;
             }
 
-            const configService = getConfigService();
             const downloadDir = await configService.get('download_dir');
 
             if (!downloadDir) {
@@ -94,8 +112,12 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
               continue;
             }
 
-            downloadPath = `${downloadDir}/${downloadHistory.torrentName}`;
-            await logger?.info(`Using fallback download path for request ${request.id}: ${downloadPath}`);
+            const fallbackPath = `${downloadDir}/${downloadHistory.torrentName}`;
+            downloadPath = PathMapper.transform(fallbackPath, mappingConfig);
+            await logger?.info(
+              `Using fallback download path for request ${request.id}: ${fallbackPath}` +
+              (downloadPath !== fallbackPath ? ` → ${downloadPath} (mapped)` : '')
+            );
           }
         } else {
           // No download client ID - use fallback path
@@ -105,7 +127,6 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
             continue;
           }
 
-          const configService = getConfigService();
           const downloadDir = await configService.get('download_dir');
 
           if (!downloadDir) {
@@ -114,8 +135,12 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
             continue;
           }
 
-          downloadPath = `${downloadDir}/${downloadHistory.torrentName}`;
-          await logger?.info(`Using configured download path for request ${request.id}: ${downloadPath}`);
+          const configuredPath = `${downloadDir}/${downloadHistory.torrentName}`;
+          downloadPath = PathMapper.transform(configuredPath, mappingConfig);
+          await logger?.info(
+            `Using configured download path for request ${request.id}: ${configuredPath}` +
+            (downloadPath !== configuredPath ? ` → ${downloadPath} (mapped)` : '')
+          );
         }
 
         await jobQueue.addOrganizeJob(

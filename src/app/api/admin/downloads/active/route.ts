@@ -48,6 +48,8 @@ export async function GET(request: NextRequest) {
             downloadStatus: true,
             torrentName: true,
             torrentHash: true,
+            startedAt: true,
+            createdAt: true,
           },
         },
       },
@@ -75,7 +77,7 @@ export async function GET(request: NextRequest) {
         torrentName: download.downloadHistory[0]?.torrentName || null,
         downloadStatus: download.downloadHistory[0]?.downloadStatus || null,
         user: download.user.plexUsername,
-        startedAt: download.updatedAt,
+        startedAt: download.downloadHistory[0]?.startedAt || download.downloadHistory[0]?.createdAt || download.updatedAt,
       }));
       return NextResponse.json({ downloads: formatted });
     }
@@ -112,7 +114,7 @@ export async function GET(request: NextRequest) {
           torrentName: download.downloadHistory[0]?.torrentName || null,
           downloadStatus: download.downloadHistory[0]?.downloadStatus || null,
           user: download.user.plexUsername,
-          startedAt: download.updatedAt,
+          startedAt: download.downloadHistory[0]?.startedAt || download.downloadHistory[0]?.createdAt || download.updatedAt,
         };
       })
     );

@@ -49,6 +49,9 @@ export async function deleteRequest(
             id: true,
             title: true,
             author: true,
+            audibleAsin: true,
+            plexGuid: true,
+            absItemId: true,
           },
         },
         downloadHistory: {
@@ -168,12 +171,39 @@ export async function deleteRequest(
       const configService = getConfigService();
       const mediaDir = (await configService.get('media_dir')) || '/media/audiobooks';
 
-      // Sanitize author and title for path
+      // Sanitize author and title for path (same logic as file-organizer.ts)
       const sanitizedAuthor = sanitizePath(request.audiobook.author);
       const sanitizedTitle = sanitizePath(request.audiobook.title);
 
-      // Build path: [media_dir]/[author]/[title]/
-      const titleFolderPath = path.join(mediaDir, sanitizedAuthor, sanitizedTitle);
+      // Build folder name with optional year and ASIN (matches file-organizer.ts logic)
+      let folderName = sanitizedTitle;
+
+      // Get ASIN and check for year in AudibleCache
+      const asin = request.audiobook.audibleAsin;
+      let year: number | undefined;
+
+      if (asin) {
+        // Try to get year from AudibleCache if it exists
+        const audibleCache = await prisma.audibleCache.findUnique({
+          where: { asin },
+          select: { releaseDate: true },
+        });
+
+        if (audibleCache?.releaseDate) {
+          year = new Date(audibleCache.releaseDate).getFullYear();
+        }
+      }
+
+      if (year) {
+        folderName = `${folderName} (${year})`;
+      }
+
+      if (asin) {
+        folderName = `${folderName} ${asin}`;
+      }
+
+      // Build path: [media_dir]/[author]/[title (year) asin]/
+      const titleFolderPath = path.join(mediaDir, sanitizedAuthor, folderName);
 
       // Check if folder exists
       try {
@@ -185,11 +215,20 @@ export async function deleteRequest(
         console.log(`[RequestDelete] Deleted media directory: ${titleFolderPath}`);
         filesDeleted = true;
       } catch (accessError) {
-        // Folder doesn't exist - that's okay
-        console.log(
-          `[RequestDelete] Media directory not found (already deleted?): ${titleFolderPath}`
-        );
-        filesDeleted = false;
+        // Folder doesn't exist - try without year/ASIN (fallback for older files)
+        const fallbackPath = path.join(mediaDir, sanitizedAuthor, sanitizedTitle);
+        try {
+          await fs.access(fallbackPath);
+          await fs.rm(fallbackPath, { recursive: true, force: true });
+          console.log(`[RequestDelete] Deleted media directory (fallback path): ${fallbackPath}`);
+          filesDeleted = true;
+        } catch (fallbackError) {
+          // Neither path exists - that's okay
+          console.log(
+            `[RequestDelete] Media directory not found (tried: ${titleFolderPath}, ${fallbackPath})`
+          );
+          filesDeleted = false;
+        }
       }
     } catch (error) {
       console.error(
@@ -199,7 +238,88 @@ export async function deleteRequest(
       // Continue with soft delete even if file deletion fails
     }
 
-    // 4. Soft delete request
+    // 4. Delete from plex_library table and clear audiobook availability
+    // This ensures the book immediately shows as NOT available when searching
+    try {
+      const { getConfigService } = await import('./config.service');
+      const configService = getConfigService();
+      const backendMode = await configService.getBackendMode();
+
+      // Delete ALL plex_library records matching this audiobook's title and author
+      // This handles cases where there might be duplicate library records
+      // and ensures the book doesn't show as "In Your Library" during searches
+      try {
+        // Find all matching library records (by title/author fuzzy match)
+        const matchingLibraryRecords = await prisma.plexLibrary.findMany({
+          where: {
+            title: {
+              contains: request.audiobook.title.substring(0, 20),
+              mode: 'insensitive',
+            },
+          },
+        });
+
+        // Filter to exact matches (case-insensitive title and author)
+        const exactMatches = matchingLibraryRecords.filter((record) => {
+          const titleMatch = record.title.toLowerCase() === request.audiobook.title.toLowerCase();
+          const authorMatch = record.author.toLowerCase() === request.audiobook.author.toLowerCase();
+          return titleMatch && authorMatch;
+        });
+
+        if (exactMatches.length > 0) {
+          // Delete all exact matches
+          const deletePromises = exactMatches.map((record) =>
+            prisma.plexLibrary.delete({ where: { id: record.id } })
+          );
+
+          await Promise.all(deletePromises);
+
+          console.log(
+            `[RequestDelete] Deleted ${exactMatches.length} plex_library record(s) for "${request.audiobook.title}"`
+          );
+        } else {
+          console.log(
+            `[RequestDelete] No plex_library records found for "${request.audiobook.title}"`
+          );
+        }
+      } catch (libError) {
+        console.error(
+          `[RequestDelete] Error deleting plex_library records:`,
+          libError instanceof Error ? libError.message : 'Unknown error'
+        );
+        // Continue with deletion even if library cleanup fails
+      }
+
+      // Clear audiobook record linkage
+      const updateData: any = {
+        status: 'requested', // Reset to requested state
+        updatedAt: new Date(),
+      };
+
+      // Clear library linkage based on backend mode
+      if (backendMode === 'audiobookshelf') {
+        updateData.absItemId = null;
+      } else {
+        updateData.plexGuid = null;
+      }
+
+      await prisma.audiobook.update({
+        where: { id: request.audiobook.id },
+        data: updateData,
+      });
+
+      console.log(
+        `[RequestDelete] Cleared availability status for audiobook ${request.audiobook.id}`
+      );
+    } catch (error) {
+      console.error(
+        `[RequestDelete] Error clearing audiobook status:`,
+        error instanceof Error ? error.message : 'Unknown error'
+      );
+      // Continue with deletion even if this fails
+    }
+
+    // 5. Soft delete request
     await prisma.request.update({
       where: { id: requestId },
       data: {

@@ -356,6 +356,28 @@ export async function POST(request: NextRequest) {
       create: { key: 'download_client_password', value: downloadClient.password },
     });
 
+    // Remote path mapping configuration
+    await prisma.configuration.upsert({
+      where: { key: 'download_client_remote_path_mapping_enabled' },
+      update: { value: downloadClient.remotePathMappingEnabled ? 'true' : 'false' },
+      create: {
+        key: 'download_client_remote_path_mapping_enabled',
+        value: downloadClient.remotePathMappingEnabled ? 'true' : 'false',
+      },
+    });
+
+    await prisma.configuration.upsert({
+      where: { key: 'download_client_remote_path' },
+      update: { value: downloadClient.remotePath || '' },
+      create: { key: 'download_client_remote_path', value: downloadClient.remotePath || '' },
+    });
+
+    await prisma.configuration.upsert({
+      where: { key: 'download_client_local_path' },
+      update: { value: downloadClient.localPath || '' },
+      create: { key: 'download_client_local_path', value: downloadClient.localPath || '' },
+    });
+
     // Path configuration
     await prisma.configuration.upsert({
       where: { key: 'download_dir' },

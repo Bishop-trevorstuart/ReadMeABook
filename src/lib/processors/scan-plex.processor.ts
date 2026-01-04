@@ -137,7 +137,186 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
 
     await logger?.info(`Scan complete: ${libraryItems.length} items scanned, ${newCount} new, ${updatedCount} updated, ${skippedCount} skipped`);
 
-    // 5. Match downloaded requests against library
+    // 5. Remove stale records from plex_library (items no longer in the actual library)
+    // This ensures the database is a fresh snapshot of the library state
+    await logger?.info(`Checking for stale library records...`);
+
+    const scannedPlexGuids = libraryItems
+      .filter(item => item.externalId)
+      .map(item => item.externalId);
+
+    let staleRemovedCount = 0;
+    let audiobooksReset = 0;
+    let requestsReset = 0;
+
+    // Safety check: Only remove stale records if we actually scanned items
+    // This prevents accidentally deleting everything if the library scan fails or returns empty
+    if (scannedPlexGuids.length > 0) {
+      // Find all plex_library entries for this library that were NOT seen in this scan
+      const staleLibraryItems = await prisma.plexLibrary.findMany({
+        where: {
+          plexLibraryId: targetLibraryId,
+          plexGuid: {
+            notIn: scannedPlexGuids,
+          },
+        },
+      });
+
+      if (staleLibraryItems.length > 0) {
+      await logger?.info(`Found ${staleLibraryItems.length} stale library records to remove`);
+
+      // For each stale library item, clean up references
+      for (const staleItem of staleLibraryItems) {
+        try {
+          // Find audiobooks that reference this stale library item
+          const linkedAudiobooks = await prisma.audiobook.findMany({
+            where: {
+              OR: [
+                { plexGuid: staleItem.plexGuid },
+                { absItemId: staleItem.plexGuid },
+              ],
+            },
+            include: {
+              requests: {
+                where: { deletedAt: null },
+              },
+            },
+          });
+
+          // Reset audiobook records and their requests
+          for (const audiobook of linkedAudiobooks) {
+            // Clear library linkage
+            const updateData: any = {
+              status: 'requested',
+              plexGuid: null,
+              absItemId: null,
+              updatedAt: new Date(),
+            };
+
+            await prisma.audiobook.update({
+              where: { id: audiobook.id },
+              data: updateData,
+            });
+
+            audiobooksReset++;
+
+            // Reset any 'available' requests back to 'downloaded' or 'failed'
+            for (const request of audiobook.requests) {
+              if (request.status === 'available') {
+                await prisma.request.update({
+                  where: { id: request.id },
+                  data: {
+                    status: 'downloaded', // Back to downloaded state (files may still be there)
+                    updatedAt: new Date(),
+                  },
+                });
+                requestsReset++;
+              }
+            }
+
+            await logger?.info(`Reset audiobook "${staleItem.title}" (no longer in library)`);
+          }
+
+          // Delete the stale library record
+          await prisma.plexLibrary.delete({
+            where: { id: staleItem.id },
+          });
+
+          staleRemovedCount++;
+        } catch (error) {
+          await logger?.error(`Failed to remove stale library item "${staleItem.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+        }
+      }
+
+        await logger?.info(`Removed ${staleRemovedCount} stale records, reset ${audiobooksReset} audiobooks and ${requestsReset} requests`);
+      } else {
+        await logger?.info(`No stale library records found`);
+      }
+    } else {
+      await logger?.warn(`Scan returned no items - skipping stale record cleanup to prevent data loss`);
+    }
+
+    // 5b. Clean up orphaned audiobooks (audiobooks with plexGuid/absItemId that don't exist in plex_library)
+    // This handles cases where the library record was already deleted but audiobook record wasn't updated
+    await logger?.info(`Checking for orphaned audiobooks...`);
+
+    const allPlexGuidsInLibrary = await prisma.plexLibrary.findMany({
+      select: { plexGuid: true },
+    });
+    const validPlexGuids = allPlexGuidsInLibrary.map(item => item.plexGuid);
+
+    let orphanedAudiobooksReset = 0;
+    let orphanedRequestsReset = 0;
+
+    // Find audiobooks with plexGuid/absItemId that don't exist in plex_library
+    const orphanedAudiobooks = await prisma.audiobook.findMany({
+      where: {
+        OR: [
+          {
+            plexGuid: { not: null },
+          },
+          {
+            absItemId: { not: null },
+          },
+        ],
+      },
+      include: {
+        requests: {
+          where: { deletedAt: null },
+        },
+      },
+    });
+
+    for (const audiobook of orphanedAudiobooks) {
+      const linkedId = audiobook.plexGuid || audiobook.absItemId;
+
+      // Skip if this audiobook's library ID is valid (exists in plex_library)
+      if (linkedId && validPlexGuids.includes(linkedId)) {
+        continue;
+      }
+
+      // This audiobook is orphaned - its library link points to nothing
+      try {
+        await logger?.info(`Found orphaned audiobook: "${audiobook.title}" (linked to non-existent library item)`);
+
+        // Clear library linkage
+        await prisma.audiobook.update({
+          where: { id: audiobook.id },
+          data: {
+            status: 'requested',
+            plexGuid: null,
+            absItemId: null,
+            updatedAt: new Date(),
+          },
+        });
+
+        orphanedAudiobooksReset++;
+
+        // Reset any 'available' requests
+        for (const request of audiobook.requests) {
+          if (request.status === 'available') {
+            await prisma.request.update({
+              where: { id: request.id },
+              data: {
+                status: 'downloaded',
+                updatedAt: new Date(),
+              },
+            });
+            orphanedRequestsReset++;
+          }
+        }
+      } catch (error) {
+        await logger?.error(`Failed to reset orphaned audiobook "${audiobook.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
+    }
+
+    if (orphanedAudiobooksReset > 0) {
+      await logger?.info(`Reset ${orphanedAudiobooksReset} orphaned audiobooks and ${orphanedRequestsReset} requests`);
+    } else {
+      await logger?.info(`No orphaned audiobooks found`);
+    }
+
+    // 6. Match downloaded requests against library
     await logger?.info(`Checking for downloaded requests to match...`);
     const downloadedRequests = await prisma.request.findMany({
       where: {
@@ -205,6 +384,11 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
       newCount,
       updatedCount,
       skippedCount,
+      staleRemovedCount,
+      audiobooksReset,
+      requestsReset,
+      orphanedAudiobooksReset,
+      orphanedRequestsReset,
       matchedDownloads: matchedCount,
     });
 
@@ -217,6 +401,11 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
       newCount,
       updatedCount,
       skippedCount,
+      staleRemovedCount,
+      audiobooksReset,
+      requestsReset,
+      orphanedAudiobooksReset,
+      orphanedRequestsReset,
       newAudiobooks: results,
       matchedDownloads: matchedCount,
     };

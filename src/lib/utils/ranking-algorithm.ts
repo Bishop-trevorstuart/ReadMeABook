@@ -198,7 +198,37 @@ export class RankingAlgorithm {
     const requestTitle = audiobook.title.toLowerCase();
     const requestAuthor = audiobook.author.toLowerCase();
 
-    // Title matching (0-35 points)
+    // ========== STAGE 1: WORD COVERAGE FILTER (MANDATORY) ==========
+    // Extract significant words (filter out common stop words)
+    const stopWords = ['the', 'a', 'an', 'of', 'on', 'in', 'at', 'by', 'for'];
+
+    const extractWords = (text: string, stopList: string[]): string[] => {
+      return text
+        .toLowerCase()
+        .replace(/[^\w\s]/g, ' ') // Remove punctuation
+        .split(/\s+/)
+        .filter(word => word.length > 0 && !stopList.includes(word));
+    };
+
+    const requestWords = extractWords(requestTitle, stopWords);
+    const torrentWords = extractWords(torrentTitle, stopWords);
+
+    // Calculate word coverage: how many REQUEST words appear in TORRENT
+    if (requestWords.length === 0) {
+      // Edge case: title is only stop words, skip filter
+      // Fall through to normal scoring
+    } else {
+      const matchedWords = requestWords.filter(word => torrentWords.includes(word));
+      const coverage = matchedWords.length / requestWords.length;
+
+      // HARD REQUIREMENT: Must have 80%+ word coverage
+      if (coverage < 0.80) {
+        // Automatic rejection - doesn't contain enough of the requested words
+        return 0;
+      }
+    }
+
+    // ========== STAGE 2: TITLE MATCHING (0-35 points) ==========
     let titleScore = 0;
     if (torrentTitle.includes(requestTitle)) {
       // Found the title, but is it the complete title or part of a longer one?
@@ -224,7 +254,7 @@ export class RankingAlgorithm {
       titleScore = compareTwoStrings(requestTitle, torrentTitle) * 35;
     }
 
-    // Author matching (0-15 points)
+    // ========== STAGE 3: AUTHOR MATCHING (0-15 points) ==========
     // Parse requested authors (split on separators, filter out roles)
     const requestAuthors = requestAuthor
       .split(/,|&| and | - /)

@@ -6,12 +6,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { PathMapper } from '@/lib/utils/path-mapper';
 
 export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
     return requireAdmin(req, async () => {
       try {
-        const { type, url, username, password } = await request.json();
+        const {
+          type,
+          url,
+          username,
+          password,
+          remotePathMappingEnabled,
+          remotePath,
+          localPath,
+        } = await request.json();
 
         if (!type || !url || !username || !password) {
           return NextResponse.json(
@@ -26,6 +35,33 @@ export async function PUT(request: NextRequest) {
             { error: 'Invalid client type. Must be qbittorrent or transmission' },
             { status: 400 }
           );
+        }
+
+        // Validate path mapping if enabled
+        if (remotePathMappingEnabled) {
+          if (!remotePath || !localPath) {
+            return NextResponse.json(
+              { error: 'Remote path and local path are required when path mapping is enabled' },
+              { status: 400 }
+            );
+          }
+
+          try {
+            PathMapper.validate({
+              enabled: true,
+              remotePath,
+              localPath,
+            });
+          } catch (validationError) {
+            return NextResponse.json(
+              {
+                error: validationError instanceof Error
+                  ? validationError.message
+                  : 'Invalid path mapping configuration',
+              },
+              { status: 400 }
+            );
+          }
         }
 
         // Update configuration
@@ -55,6 +91,28 @@ export async function PUT(request: NextRequest) {
             create: { key: 'download_client_password', value: password },
           });
         }
+
+        // Save remote path mapping configuration
+        await prisma.configuration.upsert({
+          where: { key: 'download_client_remote_path_mapping_enabled' },
+          update: { value: remotePathMappingEnabled ? 'true' : 'false' },
+          create: {
+            key: 'download_client_remote_path_mapping_enabled',
+            value: remotePathMappingEnabled ? 'true' : 'false',
+          },
+        });
+
+        await prisma.configuration.upsert({
+          where: { key: 'download_client_remote_path' },
+          update: { value: remotePath || '' },
+          create: { key: 'download_client_remote_path', value: remotePath || '' },
+        });
+
+        await prisma.configuration.upsert({
+          where: { key: 'download_client_local_path' },
+          update: { value: localPath || '' },
+          create: { key: 'download_client_local_path', value: localPath || '' },
+        });
 
         console.log('[Admin] Download client settings updated');
 
