@@ -91,7 +91,7 @@ export class SABnzbdService {
     disableSSLVerify: boolean = false
   ) {
     this.baseUrl = baseUrl.replace(/\/$/, '');
-    this.apiKey = apiKey;
+    this.apiKey = apiKey?.trim() || '';
     this.defaultCategory = defaultCategory;
     this.disableSSLVerify = disableSSLVerify;
 
@@ -114,6 +114,40 @@ export class SABnzbdService {
    */
   async testConnection(): Promise<{ success: boolean; version?: string; error?: string }> {
     try {
+      // Validate API key is not empty
+      if (!this.apiKey || this.apiKey.trim() === '') {
+        return {
+          success: false,
+          error: 'API key is required for SABnzbd',
+        };
+      }
+
+      // Use queue endpoint to test authentication (requires valid API key)
+      const response = await this.client.get('/api', {
+        params: {
+          mode: 'queue',
+          output: 'json',
+          apikey: this.apiKey,
+        },
+      });
+
+      // Check if SABnzbd returned an error (invalid API key)
+      // SABnzbd can return errors in different formats:
+      // - { status: false, error: "message" }
+      // - { error: "message" }
+      // - Plain text error
+      if (response.data?.status === false || response.data?.error) {
+        const errorMsg = response.data?.error || 'Authentication failed';
+        return {
+          success: false,
+          error: errorMsg.includes('API Key')
+            ? 'Invalid API key. Check your SABnzbd configuration (Config → General → API Key).'
+            : errorMsg,
+        };
+      }
+
+      // Queue endpoint requires auth - if we got here, API key is valid
+      // Now get the version
       const version = await this.getVersion();
       return { success: true, version };
     } catch (error) {

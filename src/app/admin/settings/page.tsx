@@ -1532,9 +1532,15 @@ export default function AdminSettings() {
                   <select
                     value={settings.downloadClient.type}
                     onChange={(e) => {
+                      // Clear credentials when switching client types
                       setSettings({
                         ...settings,
-                        downloadClient: { ...settings.downloadClient, type: e.target.value },
+                        downloadClient: {
+                          ...settings.downloadClient,
+                          type: e.target.value,
+                          username: '', // Clear username (only used by qBittorrent)
+                          password: '', // Clear password/API key
+                        },
                       });
                       setValidated({ ...validated, download: false });
                     }}
@@ -1775,7 +1781,11 @@ export default function AdminSettings() {
                   <Button
                     onClick={testDownloadClientConnection}
                     loading={testing}
-                    disabled={!settings.downloadClient.url || !settings.downloadClient.username || !settings.downloadClient.password}
+                    disabled={
+                      !settings.downloadClient.url ||
+                      !settings.downloadClient.password ||
+                      (settings.downloadClient.type === 'qbittorrent' && !settings.downloadClient.username)
+                    }
                     variant="outline"
                     className="w-full"
                   >
