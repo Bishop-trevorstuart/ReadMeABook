@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getAuthProvider } from '@/lib/services/auth';
 import { getBaseUrl } from '@/lib/utils/url';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Auth.OIDC.Callback');
 
 export async function GET(request: NextRequest) {
   const searchParams = request.nextUrl.searchParams;
@@ -71,7 +74,7 @@ export async function GET(request: NextRequest) {
     if (result.isFirstLogin) {
       // First login - redirect to initializing page to show job progress
       redirectUrl = `${baseUrl}/setup/initializing#authData=${authDataEncoded}`;
-      console.log('[OIDC Callback] First login detected - redirecting to initializing page');
+      logger.info('First login detected - redirecting to initializing page');
     } else {
       // Normal login - redirect to login page with auth success
       redirectUrl = `${baseUrl}/login?auth=success#authData=${authDataEncoded}`;
@@ -132,7 +135,7 @@ export async function GET(request: NextRequest) {
 
     return response;
   } catch (error) {
-    console.error('[OIDC Callback] Authentication failed:', error);
+    logger.error('Authentication failed', { error: error instanceof Error ? error.message : String(error) });
 
     const errorMsg = error instanceof Error ? error.message : 'Authentication failed';
     return NextResponse.redirect(`${baseUrl}/login?error=${encodeURIComponent(errorMsg)}`);

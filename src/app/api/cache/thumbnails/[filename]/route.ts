@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Thumbnails');
 
 const CACHE_DIR = '/app/cache/thumbnails';
 
@@ -60,7 +63,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('[ThumbnailAPI] Error serving thumbnail:', error);
+    logger.error('Error serving thumbnail', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

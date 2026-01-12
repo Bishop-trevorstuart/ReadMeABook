@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { getPlexService } from '@/lib/integrations/plex.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.AdminPlexSettings');
 
 export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -69,24 +72,24 @@ export async function PUT(request: NextRequest) {
             update: { value: serverInfo.info.machineIdentifier },
             create: { key: 'plex_machine_identifier', value: serverInfo.info.machineIdentifier },
           });
-          console.log('[Admin] machineIdentifier updated:', serverInfo.info.machineIdentifier);
+          logger.info('machineIdentifier updated', { machineIdentifier: serverInfo.info.machineIdentifier });
         } else {
-          console.warn('[Admin] Could not fetch machineIdentifier');
+          logger.warn('Could not fetch machineIdentifier');
         }
       }
     } catch (error) {
-      console.error('[Admin] Error fetching machineIdentifier:', error);
+      logger.error('Error fetching machineIdentifier', { error: error instanceof Error ? error.message : String(error) });
       // Don't fail the request if machineIdentifier fetch fails
     }
 
-    console.log('[Admin] Plex settings updated');
+    logger.info('Plex settings updated');
 
     return NextResponse.json({
       success: true,
       message: 'Plex settings updated successfully',
     });
       } catch (error) {
-        console.error('[Admin] Failed to update Plex settings:', error);
+        logger.error('Failed to update Plex settings', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

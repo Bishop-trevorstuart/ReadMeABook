@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.Ebook');
 
 export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -73,7 +76,7 @@ export async function PUT(request: NextRequest) {
 
         return NextResponse.json({ success: true });
       } catch (error) {
-        console.error('Failed to save e-book settings:', error);
+        logger.error('Failed to save e-book settings', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to save settings' },
           { status: 500 }

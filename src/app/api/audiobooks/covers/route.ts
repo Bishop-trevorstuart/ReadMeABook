@@ -7,6 +7,9 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Audiobooks.Covers');
 
 /**
  * GET /api/audiobooks/covers?count=100
@@ -64,7 +67,7 @@ export async function GET() {
       count: shuffled.length,
     });
   } catch (error) {
-    console.error('Failed to get audiobook covers:', error);
+    logger.error('Failed to get audiobook covers', { error: error instanceof Error ? error.message : String(error) });
 
     // Return empty array on error (login page will show placeholders)
     return NextResponse.json({

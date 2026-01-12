@@ -9,6 +9,9 @@ import { prisma } from '@/lib/db';
 import { getQBittorrentService } from '@/lib/integrations/qbittorrent.service';
 import { getSABnzbdService } from '@/lib/integrations/sabnzbd.service';
 import { getConfigService } from '@/lib/services/config.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Downloads');
 
 export async function GET(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -96,7 +99,7 @@ export async function GET(request: NextRequest) {
           }
         } catch (error) {
           // Download client unavailable or download not found - use defaults
-          console.error(`[Admin] Failed to get download info:`, error);
+          logger.error('Failed to get download info', { error: error instanceof Error ? error.message : String(error) });
         }
 
         return {
@@ -117,7 +120,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ downloads: formatted });
       } catch (error) {
-        console.error('[Admin] Failed to fetch active downloads:', error);
+        logger.error('Failed to fetch active downloads', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to fetch active downloads' },
           { status: 500 }

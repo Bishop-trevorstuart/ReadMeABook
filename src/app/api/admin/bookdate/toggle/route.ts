@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.BookDate.Toggle');
 
 async function handler(req: AuthenticatedRequest) {
   try {
@@ -31,7 +34,7 @@ async function handler(req: AuthenticatedRequest) {
     });
 
   } catch (error: any) {
-    console.error('[BookDate] Admin toggle error:', error);
+    logger.error('Admin toggle error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Failed to toggle BookDate' },
       { status: 500 }

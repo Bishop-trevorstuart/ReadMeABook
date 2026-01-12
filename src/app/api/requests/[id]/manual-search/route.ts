@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { getJobQueueService } from '@/lib/services/job-queue.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.ManualSearch');
 
 /**
  * POST /api/requests/[id]/manual-search
@@ -89,7 +92,7 @@ export async function POST(
         message: 'Manual search initiated',
       });
     } catch (error) {
-      console.error('Failed to trigger manual search:', error);
+      logger.error('Failed to trigger manual search', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json(
         {
           error: 'SearchError',

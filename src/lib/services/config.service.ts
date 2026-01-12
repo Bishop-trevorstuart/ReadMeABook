@@ -5,6 +5,9 @@
 
 import { prisma } from '@/lib/db';
 import { getEncryptionService } from './encryption.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('Config');
 
 /**
  * Configuration update payload
@@ -70,7 +73,7 @@ export class ConfigurationService {
 
       return null;
     } catch (error) {
-      console.error(`[Config] Failed to get config key "${key}":`, error);
+      logger.error(`Failed to get config key "${key}"`, { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -119,7 +122,7 @@ export class ConfigurationService {
 
       return result;
     } catch (error) {
-      console.error(`[Config] Failed to get category "${category}":`, error);
+      logger.error(`Failed to get category "${category}"`, { error: error instanceof Error ? error.message : String(error) });
       return {};
     }
   }
@@ -144,7 +147,7 @@ export class ConfigurationService {
 
       return result;
     } catch (error) {
-      console.error('[Config] Failed to get all configuration:', error);
+      logger.error('Failed to get all configuration', { error: error instanceof Error ? error.message : String(error) });
       return {};
     }
   }
@@ -186,7 +189,7 @@ export class ConfigurationService {
         this.clearCache(update.key);
       }
     } catch (error) {
-      console.error('[Config] Failed to set configuration:', error);
+      logger.error('Failed to set configuration', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }

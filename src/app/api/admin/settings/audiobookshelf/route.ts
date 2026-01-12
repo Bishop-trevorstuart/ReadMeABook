@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { ConfigUpdate } from '@/lib/services/config.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.Audiobookshelf');
 
 export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -41,7 +44,7 @@ export async function PUT(request: NextRequest) {
           message: 'Audiobookshelf settings saved successfully'
         });
       } catch (error) {
-        console.error('[Admin] Failed to save Audiobookshelf settings:', error);
+        logger.error('Failed to save Audiobookshelf settings', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to save settings' },
           { status: 500 }

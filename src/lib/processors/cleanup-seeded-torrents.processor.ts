@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '../db';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 
 export interface CleanupSeededTorrentsPayload {
   jobId?: string;
@@ -15,9 +15,9 @@ export interface CleanupSeededTorrentsPayload {
 
 export async function processCleanupSeededTorrents(payload: CleanupSeededTorrentsPayload): Promise<any> {
   const { jobId, scheduledJobId } = payload;
-  const logger = jobId ? createJobLogger(jobId, 'CleanupSeededTorrents') : null;
+  const logger = RMABLogger.forJob(jobId, 'CleanupSeededTorrents');
 
-  await logger?.info('Starting cleanup job for seeded torrents...');
+  logger.info('Starting cleanup job for seeded torrents...');
 
   try {
     // Get indexer configuration with per-indexer seeding times
@@ -26,7 +26,7 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
     const indexersConfigStr = await configService.get('prowlarr_indexers');
 
     if (!indexersConfigStr) {
-      await logger?.warn('No indexer configuration found, skipping');
+      logger.warn('No indexer configuration found, skipping');
       return {
         success: false,
         message: 'No indexer configuration',
@@ -42,7 +42,7 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
       indexerConfigMap.set(indexer.name, indexer);
     }
 
-    await logger?.info(`Loaded configuration for ${indexerConfigMap.size} indexers`);
+    logger.info(`Loaded configuration for ${indexerConfigMap.size} indexers`);
 
     // Find all completed requests + soft-deleted requests (orphaned downloads)
     // IMPORTANT: Only cleanup requests that are truly complete and not being actively processed
@@ -76,7 +76,7 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
       take: 100, // Limit to 100 requests per run
     });
 
-    await logger?.info(`Found ${completedRequests.length} requests to check (status: 'available' or soft-deleted)`);
+    logger.info(`Found ${completedRequests.length} requests to check (status: 'available' or soft-deleted)`);
 
     let cleaned = 0;
     let skipped = 0;
@@ -95,7 +95,7 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
           // For soft-deleted SABnzbd requests, hard delete immediately (no seeding needed)
           if (request.deletedAt) {
             await prisma.request.delete({ where: { id: request.id } });
-            await logger?.info(`Hard-deleted orphaned SABnzbd request ${request.id}`);
+            logger.info(`Hard-deleted orphaned SABnzbd request ${request.id}`);
           }
           continue;
         }
@@ -116,7 +116,7 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
           // For soft-deleted requests with unlimited seeding, hard delete immediately
           if (request.deletedAt) {
             await prisma.request.delete({ where: { id: request.id } });
-            await logger?.info(`Hard-deleted orphaned request ${request.id} with unlimited seeding`);
+            logger.info(`Hard-deleted orphaned request ${request.id} with unlimited seeding`);
           }
           noConfig++;
           continue;
@@ -146,7 +146,7 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
           continue;
         }
 
-        await logger?.info(`Torrent ${torrent.name} (${indexerName}) has met seeding requirement (${Math.floor(actualSeedingTime / 60)}/${seedingConfig.seedingTimeMinutes} minutes)`);
+        logger.info(`Torrent ${torrent.name} (${indexerName}) has met seeding requirement (${Math.floor(actualSeedingTime / 60)}/${seedingConfig.seedingTimeMinutes} minutes)`);
 
         // CRITICAL: Check if any other active (non-deleted) request is using this same torrent hash
         // This prevents deleting shared torrents when user re-requests the same audiobook
@@ -165,12 +165,12 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
         });
 
         if (otherActiveRequests.length > 0) {
-          await logger?.info(`Skipping torrent deletion - ${otherActiveRequests.length} other active request(s) still using this torrent (IDs: ${otherActiveRequests.map(r => r.id).join(', ')})`);
+          logger.info(`Skipping torrent deletion - ${otherActiveRequests.length} other active request(s) still using this torrent (IDs: ${otherActiveRequests.map(r => r.id).join(', ')})`);
 
           // If this is a soft-deleted request, hard delete it but DON'T delete the torrent
           if (request.deletedAt) {
             await prisma.request.delete({ where: { id: request.id } });
-            await logger?.info(`Hard-deleted orphaned request ${request.id} (kept shared torrent for active requests)`);
+            logger.info(`Hard-deleted orphaned request ${request.id} (kept shared torrent for active requests)`);
           }
 
           skipped++;
@@ -183,18 +183,18 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
         // If this is a soft-deleted request (orphaned download), hard delete it now
         if (request.deletedAt) {
           await prisma.request.delete({ where: { id: request.id } });
-          await logger?.info(`Hard-deleted orphaned request ${request.id} after torrent cleanup`);
+          logger.info(`Hard-deleted orphaned request ${request.id} after torrent cleanup`);
         } else {
-          await logger?.info(`Deleted torrent and files for active request ${request.id}`);
+          logger.info(`Deleted torrent and files for active request ${request.id}`);
         }
 
         cleaned++;
       } catch (error) {
-        await logger?.error(`Failed to cleanup request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        logger.error(`Failed to cleanup request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
-    await logger?.info(`Cleanup complete: ${cleaned} torrents cleaned, ${skipped} still seeding, ${noConfig} unlimited`);
+    logger.info(`Cleanup complete: ${cleaned} torrents cleaned, ${skipped} still seeding, ${noConfig} unlimited`);
 
     return {
       success: true,
@@ -205,7 +205,7 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
       unlimited: noConfig,
     };
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     throw error;
   }
 }

@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyRefreshToken, generateAccessToken } from '@/lib/utils/jwt';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Auth.Refresh');
 
 /**
  * POST /api/auth/refresh
@@ -68,7 +71,7 @@ export async function POST(request: NextRequest) {
       expiresIn: 3600, // 1 hour in seconds
     });
   } catch (error) {
-    console.error('Failed to refresh token:', error);
+    logger.error('Failed to refresh token', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'RefreshError',

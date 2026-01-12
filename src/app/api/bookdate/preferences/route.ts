@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { getConfigService } from '@/lib/services/config.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.BookDate.Preferences');
 
 /**
  * GET /api/bookdate/preferences
@@ -54,7 +57,7 @@ async function getPreferences(req: AuthenticatedRequest) {
     });
 
   } catch (error: any) {
-    console.error('Get BookDate preferences error:', error);
+    logger.error('Get BookDate preferences error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Failed to get preferences' },
       { status: 500 }
@@ -135,7 +138,7 @@ async function updatePreferences(req: AuthenticatedRequest) {
     });
 
   } catch (error: any) {
-    console.error('Update BookDate preferences error:', error);
+    logger.error('Update BookDate preferences error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Failed to update preferences' },
       { status: 500 }

@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Setup.Status');
 
 /**
  * GET /api/setup/status
@@ -24,7 +27,7 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     // If database is not ready or table doesn't exist, setup is not complete
-    console.error('[Setup Status] Check failed:', error);
+    logger.error('Check failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json({
       setupComplete: false,
     });

@@ -11,6 +11,9 @@ import { prisma } from '@/lib/db';
 import { getJobQueueService } from '@/lib/services/job-queue.service';
 import { findPlexMatch } from '@/lib/utils/audiobook-matcher';
 import { z } from 'zod';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.RequestWithTorrent');
 
 const RequestWithTorrentSchema = z.object({
   audiobook: z.object({
@@ -153,7 +156,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Delete the existing failed/warn/cancelled request
-        console.log(`[RequestWithTorrent] Deleting existing ${existingRequest.status} request ${existingRequest.id}`);
+        logger.debug(`Deleting existing ${existingRequest.status} request ${existingRequest.id}`);
         await prisma.request.delete({
           where: { id: existingRequest.id },
         });
@@ -190,14 +193,14 @@ export async function POST(request: NextRequest) {
         torrent
       );
 
-      console.log(`[RequestWithTorrent] Queued download monitor job for request ${newRequest.id}`);
+      logger.info(`Queued download monitor job for request ${newRequest.id}`);
 
       return NextResponse.json({
         success: true,
         request: newRequest,
       }, { status: 201 });
     } catch (error) {
-      console.error('Failed to create request with torrent:', error);
+      logger.error('Failed to create request with torrent', { error: error instanceof Error ? error.message : String(error) });
 
       if (error instanceof z.ZodError) {
         return NextResponse.json(

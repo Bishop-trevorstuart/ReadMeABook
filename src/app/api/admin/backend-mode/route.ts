@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { ConfigurationService } from '@/lib/services/config.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.BackendMode');
 
 export async function GET(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -18,7 +21,7 @@ export async function GET(request: NextRequest) {
         isAudiobookshelf: backendMode === 'audiobookshelf'
       });
     } catch (error) {
-      console.error('[BackendMode] Failed to get backend mode:', error);
+      logger.error('Failed to get backend mode', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json(
         { error: 'Failed to get backend mode' },
         { status: 500 }
@@ -50,7 +53,7 @@ export async function PUT(request: NextRequest) {
         const { clearLibraryServiceCache } = await import('@/lib/services/library');
         clearLibraryServiceCache();
 
-        console.log(`[BackendMode] Backend mode changed to: ${mode}`);
+        logger.info(`Backend mode changed to: ${mode}`);
 
         return NextResponse.json({
           success: true,
@@ -58,7 +61,7 @@ export async function PUT(request: NextRequest) {
           message: `Backend mode set to ${mode}`
         });
       } catch (error) {
-        console.error('[BackendMode] Failed to set backend mode:', error);
+        logger.error('Failed to set backend mode', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to set backend mode' },
           { status: 500 }

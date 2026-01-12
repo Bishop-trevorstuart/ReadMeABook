@@ -9,6 +9,9 @@ import { getConfigService } from '@/lib/services/config.service';
 import { AudibleService } from '@/lib/integrations/audible.service';
 import { getPlexService } from '@/lib/integrations/plex.service';
 import { findPlexMatch } from '@/lib/utils/audiobook-matcher';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('BookDate');
 
 export interface LibraryBook {
   title: string;
@@ -57,7 +60,7 @@ async function enrichWithUserRatings(
     });
 
     if (!user) {
-      console.warn('[BookDate] User not found');
+      logger.warn('User not found');
       return cachedBooks.map(book => ({
         title: book.title,
         author: book.author,
@@ -69,7 +72,7 @@ async function enrichWithUserRatings(
     // Local admin users: Use cached ratings (from system Plex token)
     // Local admins authenticate with username/password, not Plex OAuth
     if (user.plexId.startsWith('local-')) {
-      console.log('[BookDate] User is local admin, using cached ratings (from system Plex token)');
+      logger.info('User is local admin, using cached ratings (from system Plex token)');
       return cachedBooks.map(book => ({
         title: book.title,
         author: book.author,
@@ -80,10 +83,10 @@ async function enrichWithUserRatings(
 
     // Plex-authenticated users (including admins): Fetch library with their token to get personal ratings
     // Note: /library/sections/{id}/all returns items with the authenticated user's ratings
-    console.log('[BookDate] User is Plex-authenticated, fetching library with user token to get personal ratings');
+    logger.info('User is Plex-authenticated, fetching library with user token to get personal ratings');
 
     if (!user.authToken) {
-      console.warn('[BookDate] User has no Plex auth token');
+      logger.warn('User has no Plex auth token');
       return cachedBooks.map(book => ({
         title: book.title,
         author: book.author,
@@ -97,7 +100,7 @@ async function enrichWithUserRatings(
     const plexConfig = await configService.getPlexConfig();
 
     if (!plexConfig.serverUrl || !plexConfig.libraryId) {
-      console.warn('[BookDate] No Plex server URL or library ID configured');
+      logger.warn('No Plex server URL or library ID configured');
       return cachedBooks.map(book => ({
         title: book.title,
         author: book.author,
@@ -114,7 +117,7 @@ async function enrichWithUserRatings(
     } catch (decryptError) {
       // Token might be stored as plain text (from before encryption or different implementation)
       // Try using it as-is
-      console.warn('[BookDate] Failed to decrypt user Plex token, trying as plain text');
+      logger.warn('Failed to decrypt user Plex token, trying as plain text');
       userPlexToken = user.authToken;
     }
 
@@ -126,7 +129,7 @@ async function enrichWithUserRatings(
 
       // Get server machine ID from stored config (no need to access system token)
       if (!plexConfig.machineIdentifier) {
-        console.error('[BookDate] Server machine identifier not configured');
+        logger.error('Server machine identifier not configured');
         return cachedBooks.map(book => ({
           title: book.title,
           author: book.author,
@@ -142,7 +145,7 @@ async function enrichWithUserRatings(
       );
 
       if (!serverAccessToken) {
-        console.warn('[BookDate] Could not get server access token for user (may not have server access)');
+        logger.warn('Could not get server access token for user (may not have server access)');
         return cachedBooks.map(book => ({
           title: book.title,
           author: book.author,
@@ -151,7 +154,7 @@ async function enrichWithUserRatings(
         }));
       }
 
-      console.log('[BookDate] Successfully obtained server access token for user');
+      logger.info('Successfully obtained server access token for user');
 
       // Fetch library content with user's SERVER access token to get their personal ratings
       const userLibrary = await plexService.getLibraryContent(
@@ -160,7 +163,7 @@ async function enrichWithUserRatings(
         plexConfig.libraryId
       );
 
-      console.log(`[BookDate] Fetched ${userLibrary.length} items from Plex with user's token`);
+      logger.info(`Fetched ${userLibrary.length} items from Plex with user's token`);
 
       // Create a map of guid/ratingKey -> userRating for quick lookup
       const ratingsMap = new Map<string, number>();
@@ -177,7 +180,7 @@ async function enrichWithUserRatings(
         }
       });
 
-      console.log(`[BookDate] Found ${ratingsMap.size} rated items for non-admin user`);
+      logger.info(`Found ${ratingsMap.size} rated items for non-admin user`);
 
       // Enrich cached books with user's ratings from the fetched library
       return cachedBooks.map(book => {
@@ -200,10 +203,10 @@ async function enrichWithUserRatings(
 
     } catch (fetchError: any) {
       if (fetchError?.response?.status === 401 || fetchError?.message?.includes('401')) {
-        console.warn('[BookDate] User token unauthorized for library access (shared users may not have direct API access)');
-        console.warn('[BookDate] Falling back to recommendations without user ratings');
+        logger.warn('User token unauthorized for library access (shared users may not have direct API access)');
+        logger.warn('Falling back to recommendations without user ratings');
       } else {
-        console.error('[BookDate] Failed to fetch library with user token:', fetchError);
+        logger.error('Failed to fetch library with user token', { error: fetchError instanceof Error ? fetchError.message : String(fetchError) });
       }
       // Fallback: return books without ratings
       return cachedBooks.map(book => ({
@@ -215,7 +218,7 @@ async function enrichWithUserRatings(
     }
 
   } catch (error) {
-    console.error('[BookDate] Error enriching books with user ratings:', error);
+    logger.error('Error enriching books with user ratings', { error: error instanceof Error ? error.message : String(error) });
     // Fallback: return books without ratings on error
     return cachedBooks.map(book => ({
       title: book.title,
@@ -242,7 +245,7 @@ export async function getUserLibraryBooks(
 
     // Early validation: audiobookshelf doesn't support ratings
     if (backendMode === 'audiobookshelf' && scope === 'rated') {
-      console.warn('[BookDate] Audiobookshelf does not support ratings, falling back to full library');
+      logger.warn('Audiobookshelf does not support ratings, falling back to full library');
       scope = 'full';
     }
 
@@ -251,7 +254,7 @@ export async function getUserLibraryBooks(
     if (backendMode === 'audiobookshelf') {
       const absLibraryId = await configService.get('audiobookshelf.library_id');
       if (!absLibraryId) {
-        console.warn('[BookDate] No Audiobookshelf library ID configured');
+        logger.warn('No Audiobookshelf library ID configured');
         return [];
       }
       libraryId = absLibraryId;
@@ -259,7 +262,7 @@ export async function getUserLibraryBooks(
       // Plex mode
       const plexConfig = await configService.getPlexConfig();
       if (!plexConfig.libraryId) {
-        console.warn('[BookDate] No Plex library ID configured');
+        logger.warn('No Plex library ID configured');
         return [];
       }
       libraryId = plexConfig.libraryId;
@@ -327,7 +330,7 @@ export async function getUserLibraryBooks(
     }
 
   } catch (error) {
-    console.error('[BookDate] Error fetching library books:', error);
+    logger.error('Error fetching library books', { error: error instanceof Error ? error.message : String(error) });
     return [];
   }
 }
@@ -390,8 +393,8 @@ export async function getUserRecentSwipes(
       (a, b) => b.createdAt.getTime() - a.createdAt.getTime()
     );
 
-    console.log(
-      `[BookDate] Fetched ${allSwipes.length} swipes: ${nonDismissSwipes.length} non-dismiss, ${dismissSwipes.length} dismiss`
+    logger.info(
+      `Fetched ${allSwipes.length} swipes: ${nonDismissSwipes.length} non-dismiss, ${dismissSwipes.length} dismiss`
     );
 
     return allSwipes.map((s) => ({
@@ -402,7 +405,7 @@ export async function getUserRecentSwipes(
     }));
 
   } catch (error) {
-    console.error('[BookDate] Error fetching swipe history:', error);
+    logger.error('Error fetching swipe history', { error: error instanceof Error ? error.message : String(error) });
     return [];
   }
 }
@@ -424,11 +427,12 @@ export async function buildAIPrompt(
 
   const swipeHistory = await getUserRecentSwipes(userId, 10);
 
-  console.log('[BookDate] Building AI prompt with context:');
-  console.log(`[BookDate] - Library books: ${libraryBooks.length}`);
-  console.log(`[BookDate] - Swipe history: ${swipeHistory.length}`);
-  console.log(`[BookDate] - Custom prompt: ${config.customPrompt ? 'Yes' : 'No'}`);
-  console.log(`[BookDate] - Library scope: ${config.libraryScope}`);
+  logger.info('Building AI prompt with context:', {
+    libraryBooks: libraryBooks.length,
+    swipeHistory: swipeHistory.length,
+    customPrompt: config.customPrompt ? 'Yes' : 'No',
+    libraryScope: config.libraryScope,
+  });
 
   const prompt = {
     task: 'recommend_audiobooks',
@@ -466,7 +470,7 @@ export async function buildAIPrompt(
   };
 
   const promptString = JSON.stringify(prompt);
-  console.log('[BookDate] Full AI prompt:', promptString);
+  logger.debug('Full AI prompt:', { prompt: promptString });
 
   return promptString;
 }
@@ -488,7 +492,7 @@ export async function callAI(
   const encryptionService = getEncryptionService();
   const apiKey = encryptionService.decrypt(encryptedApiKey);
 
-  console.log(`[BookDate] Calling AI provider: ${provider}, model: ${model}`);
+  logger.info(`Calling AI provider: ${provider}, model: ${model}`);
 
   if (provider === 'openai') {
     const systemMessage = 'You are an expert audiobook recommender. Analyze user preferences and suggest audiobooks they will love. Return ONLY valid JSON.';
@@ -507,7 +511,7 @@ export async function callAI(
       ],
     };
 
-    console.log('[BookDate] OpenAI request body:', JSON.stringify(requestBody, null, 2));
+    logger.debug('OpenAI request body:', { requestBody });
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -520,13 +524,13 @@ export async function callAI(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[BookDate] OpenAI API error:', response.status, errorText);
+      logger.error('OpenAI API error', { status: response.status, error: errorText });
       throw new Error(`OpenAI API error: ${response.status} ${errorText}`);
     }
 
     const data = await response.json();
     const content = data.choices[0].message.content;
-    console.log('[BookDate] OpenAI response:', content);
+    logger.debug('OpenAI response:', { content });
     return JSON.parse(content);
 
   } else if (provider === 'claude') {
@@ -542,7 +546,7 @@ export async function callAI(
       ],
     };
 
-    console.log('[BookDate] Claude request body:', JSON.stringify(requestBody, null, 2));
+    logger.debug('Claude request body:', { requestBody });
 
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
@@ -556,13 +560,13 @@ export async function callAI(
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('[BookDate] Claude API error:', response.status, errorText);
+      logger.error('Claude API error', { status: response.status, error: errorText });
       throw new Error(`Claude API error: ${response.status} ${errorText}`);
     }
 
     const data = await response.json();
     const content = data.content[0].text;
-    console.log('[BookDate] Claude raw response:', content);
+    logger.debug('Claude raw response:', { content });
 
     // Claude sometimes wraps JSON in markdown code blocks, so clean it
     const cleanedContent = content
@@ -570,7 +574,7 @@ export async function callAI(
       .replace(/\s*```$/i, '')
       .trim();
 
-    console.log('[BookDate] Claude cleaned response:', cleanedContent);
+    logger.debug('Claude cleaned response:', { cleanedContent });
     return JSON.parse(cleanedContent);
 
   } else {
@@ -625,7 +629,7 @@ export async function matchToAudnexus(
     });
 
     if (cached) {
-      console.log(`[BookDate] Found in cache: "${cached.title}" by ${cached.author}`);
+      logger.info(`Found in cache: "${cached.title}" by ${cached.author}`);
       return {
         asin: cached.asin,
         title: cached.title,
@@ -638,29 +642,29 @@ export async function matchToAudnexus(
     }
 
     // Step 2: Search Audible.com for the book
-    console.log(`[BookDate] Not in cache, searching Audible for "${title}" by ${author}...`);
+    logger.info(`Not in cache, searching Audible for "${title}" by ${author}...`);
     const audibleService = new AudibleService();
     const searchQuery = `${title} ${author}`;
     const searchResults = await audibleService.search(searchQuery, 1);
 
     if (!searchResults.results || searchResults.results.length === 0) {
-      console.warn(`[BookDate] No Audible search results for "${title}" by ${author}`);
+      logger.warn(`No Audible search results for "${title}" by ${author}`);
       return null;
     }
 
     // Take the first result (best match)
     const firstResult = searchResults.results[0];
-    console.log(`[BookDate] Found on Audible: "${firstResult.title}" (ASIN: ${firstResult.asin})`);
+    logger.info(`Found on Audible: "${firstResult.title}" (ASIN: ${firstResult.asin})`);
 
     // Step 3: Use ASIN to fetch full details from Audnexus (or Audible as fallback)
     const details = await audibleService.getAudiobookDetails(firstResult.asin);
 
     if (!details) {
-      console.warn(`[BookDate] Could not fetch details for ASIN ${firstResult.asin}`);
+      logger.warn(`Could not fetch details for ASIN ${firstResult.asin}`);
       return null;
     }
 
-    console.log(`[BookDate] Successfully matched "${title}" to ASIN ${details.asin}`);
+    logger.info(`Successfully matched "${title}" to ASIN ${details.asin}`);
 
     return {
       asin: details.asin,
@@ -673,7 +677,7 @@ export async function matchToAudnexus(
     };
 
   } catch (error) {
-    console.error(`[BookDate] Audnexus matching error for "${title}":`, error);
+    logger.error(`Audnexus matching error for "${title}"`, { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
@@ -703,12 +707,12 @@ export async function isInLibrary(
     });
 
     if (match) {
-      console.log(`[BookDate] Book "${title}" by ${author} found in library (matched to: "${match.title}")`);
+      logger.info(`Book "${title}" by ${author} found in library (matched to: "${match.title}")`);
     }
 
     return !!match;
   } catch (error) {
-    console.error(`[BookDate] Error checking library for "${title}":`, error);
+    logger.error(`Error checking library for "${title}"`, { error: error instanceof Error ? error.message : String(error) });
     return false;
   }
 }

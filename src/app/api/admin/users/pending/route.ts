@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Users.Pending');
 
 export async function GET(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -30,7 +33,7 @@ export async function GET(request: NextRequest) {
 
         return NextResponse.json({ users: pendingUsers });
       } catch (error) {
-        console.error('[Admin] Failed to fetch pending users:', error);
+        logger.error('Failed to fetch pending users', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to fetch pending users' },
           { status: 500 }

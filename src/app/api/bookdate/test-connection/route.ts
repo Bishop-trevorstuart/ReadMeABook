@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.BookDate.TestConnection');
 
 async function authenticatedHandler(req: AuthenticatedRequest) {
   try {
@@ -64,7 +67,7 @@ async function authenticatedHandler(req: AuthenticatedRequest) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[BookDate] OpenAI API error:', errorText);
+        logger.error('OpenAI API error', { error: errorText });
         return NextResponse.json(
           { error: 'Invalid OpenAI API key or connection failed' },
           { status: 400 }
@@ -108,7 +111,7 @@ async function authenticatedHandler(req: AuthenticatedRequest) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[BookDate] Claude API error:', errorText);
+        logger.error('Claude API error', { error: errorText });
         return NextResponse.json(
           { error: 'Invalid Claude API key or connection failed' },
           { status: 400 }
@@ -123,7 +126,7 @@ async function authenticatedHandler(req: AuthenticatedRequest) {
     });
 
   } catch (error: any) {
-    console.error('[BookDate] Test connection error:', error);
+    logger.error('Test connection error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Connection test failed' },
       { status: 500 }
@@ -179,7 +182,7 @@ async function unauthenticatedHandler(req: NextRequest) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[BookDate] OpenAI API error:', errorText);
+        logger.error('OpenAI API error', { error: errorText });
         return NextResponse.json(
           { error: 'Invalid OpenAI API key or connection failed' },
           { status: 400 }
@@ -223,7 +226,7 @@ async function unauthenticatedHandler(req: NextRequest) {
 
       if (!response.ok) {
         const errorText = await response.text();
-        console.error('[BookDate] Claude API error:', errorText);
+        logger.error('Claude API error', { error: errorText });
         return NextResponse.json(
           { error: 'Invalid Claude API key or connection failed' },
           { status: 400 }
@@ -238,7 +241,7 @@ async function unauthenticatedHandler(req: NextRequest) {
     });
 
   } catch (error: any) {
-    console.error('[BookDate] Test connection error:', error);
+    logger.error('Test connection error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Connection test failed' },
       { status: 500 }

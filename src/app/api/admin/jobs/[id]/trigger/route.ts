@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAccessToken } from '@/lib/utils/jwt';
 import { getSchedulerService } from '@/lib/services/scheduler.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.JobTrigger');
 
 /**
  * POST /api/admin/jobs/:id/trigger
@@ -30,12 +33,12 @@ export async function POST(
     // Await params in Next.js 15+
     const { id } = await params;
 
-    console.log(`[JobTrigger] Triggering scheduled job: ${id}`);
+    logger.info(`Triggering scheduled job: ${id}`);
 
     const schedulerService = getSchedulerService();
     const jobId = await schedulerService.triggerJobNow(id);
 
-    console.log(`[JobTrigger] Job triggered successfully, database job ID: ${jobId}`);
+    logger.info(`Job triggered successfully, database job ID: ${jobId}`);
 
     return NextResponse.json({
       success: true,
@@ -43,7 +46,7 @@ export async function POST(
       message: 'Job triggered successfully',
     });
   } catch (error) {
-    console.error('Failed to trigger job:', error);
+    logger.error('Failed to trigger job', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'InternalError',

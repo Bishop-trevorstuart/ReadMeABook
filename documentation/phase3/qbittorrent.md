@@ -176,6 +176,11 @@ type TorrentState = 'downloading' | 'uploading' | 'stalledDL' |
    - Enhanced error messages identifying SSL/TLS certificate issues with actionable guidance
    - Secure by default (SSL verification enabled), with clear security warnings when disabled
    - URL format: `https://qbt.domain.com:443/qbittorrent` fully supported
+**12. CSRF protection HTTP 401 errors** - qBittorrent v4.1.0+ has CSRF protection enabled by default, causing authentication failures (HTTP 401) when Referer/Origin headers missing. Browsers work because they auto-send these headers. Fixed by:
+   - Adding `Referer` and `Origin` headers to all login requests
+   - Headers set to qBittorrent base URL (e.g., `https://seedbox.example.com:443/qbittorrent`)
+   - Applied to both `login()` and `testConnectionWithCredentials()` methods
+   - Works with all qBittorrent versions and configurations
 
 ## Tech Stack
 

@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { Issuer } from 'openid-client';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Setup.TestOIDC');
 
 export async function POST(request: NextRequest) {
   try {
@@ -65,7 +68,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('[Test OIDC] Discovery failed:', error);
+    logger.error('Discovery failed', { error: error instanceof Error ? error.message : String(error) });
 
     // Determine error message
     let errorMessage = 'OIDC discovery failed';

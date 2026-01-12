@@ -5,6 +5,9 @@
 
 import { NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Health');
 
 export async function GET() {
   try {
@@ -17,7 +20,7 @@ export async function GET() {
       database: 'connected',
     });
   } catch (error) {
-    console.error('Health check failed:', error);
+    logger.error('Health check failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         status: 'unhealthy',

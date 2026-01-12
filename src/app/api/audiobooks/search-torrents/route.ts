@@ -10,6 +10,9 @@ import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { getProwlarrService } from '@/lib/integrations/prowlarr.service';
 import { rankTorrents } from '@/lib/utils/ranking-algorithm';
 import { z } from 'zod';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.AudiobookSearch');
 
 const SearchSchema = z.object({
   title: z.string(),
@@ -68,14 +71,14 @@ export async function POST(request: NextRequest) {
       const prowlarr = await getProwlarrService();
       const searchQuery = title; // Title only - cast wide net
 
-      console.log(`[AudiobookSearch] Searching ${enabledIndexerIds.length} enabled indexers for: ${searchQuery}`);
+      logger.info(`Searching ${enabledIndexerIds.length} enabled indexers`, { searchQuery });
 
       const results = await prowlarr.search(searchQuery, {
         indexerIds: enabledIndexerIds,
         maxResults: 100, // Increased limit for broader search
       });
 
-      console.log(`[AudiobookSearch] Found ${results.length} raw results for "${title}" by ${author}`);
+      logger.debug(`Found ${results.length} raw results`, { title, author });
 
       if (results.length === 0) {
         return NextResponse.json({
@@ -90,41 +93,30 @@ export async function POST(request: NextRequest) {
 
       // No threshold filtering - show all results like interactive search
       // User can see scores and make their own decision
-      console.log(`[AudiobookSearch] Ranked ${rankedResults.length} results (no threshold filter - user decides)`);
+      logger.debug(`Ranked ${rankedResults.length} results (no threshold filter - user decides)`);
 
       // Log top 3 results with detailed score breakdown for debugging
       const top3 = rankedResults.slice(0, 3);
       if (top3.length > 0) {
-        console.log(`[AudiobookSearch] ==================== RANKING DEBUG ====================`);
-        console.log(`[AudiobookSearch] Requested Title: "${title}"`);
-        console.log(`[AudiobookSearch] Requested Author: "${author}"`);
-        console.log(`[AudiobookSearch] Top ${top3.length} results (out of ${rankedResults.length} total):`);
-        console.log(`[AudiobookSearch] --------------------------------------------------------`);
+        logger.debug('==================== RANKING DEBUG ====================');
+        logger.debug('Search parameters', { requestedTitle: title, requestedAuthor: author });
+        logger.debug(`Top ${top3.length} results (out of ${rankedResults.length} total)`);
+        logger.debug('--------------------------------------------------------');
         top3.forEach((result, index) => {
-          console.log(`[AudiobookSearch] ${index + 1}. "${result.title}"`);
-          console.log(`[AudiobookSearch]    Indexer: ${result.indexer}${result.indexerId ? ` (ID: ${result.indexerId})` : ''}`);
-          console.log(`[AudiobookSearch]    `);
-          console.log(`[AudiobookSearch]    Base Score: ${result.score.toFixed(1)}/100`);
-          console.log(`[AudiobookSearch]    - Title/Author Match: ${result.breakdown.matchScore.toFixed(1)}/60`);
-          console.log(`[AudiobookSearch]    - Format Quality: ${result.breakdown.formatScore.toFixed(1)}/25 (${result.format || 'unknown'})`);
-          console.log(`[AudiobookSearch]    - Seeder Count: ${result.breakdown.seederScore.toFixed(1)}/15 (${result.seeders !== undefined ? result.seeders + ' seeders' : 'N/A for Usenet'})`);
-          console.log(`[AudiobookSearch]    `);
-          console.log(`[AudiobookSearch]    Bonus Points: +${result.bonusPoints.toFixed(1)}`);
-          if (result.bonusModifiers.length > 0) {
-            result.bonusModifiers.forEach(mod => {
-              console.log(`[AudiobookSearch]    - ${mod.reason}: +${mod.points.toFixed(1)}`);
-            });
-          }
-          console.log(`[AudiobookSearch]    `);
-          console.log(`[AudiobookSearch]    Final Score: ${result.finalScore.toFixed(1)}`);
-          if (result.breakdown.notes.length > 0) {
-            console.log(`[AudiobookSearch]    Notes: ${result.breakdown.notes.join(', ')}`);
-          }
-          if (index < top3.length - 1) {
-            console.log(`[AudiobookSearch] --------------------------------------------------------`);
-          }
+          logger.debug(`${index + 1}. "${result.title}"`, {
+            indexer: result.indexer,
+            indexerId: result.indexerId,
+            baseScore: `${result.score.toFixed(1)}/100`,
+            matchScore: `${result.breakdown.matchScore.toFixed(1)}/60`,
+            formatScore: `${result.breakdown.formatScore.toFixed(1)}/25 (${result.format || 'unknown'})`,
+            seederScore: `${result.breakdown.seederScore.toFixed(1)}/15 (${result.seeders !== undefined ? result.seeders + ' seeders' : 'N/A for Usenet'})`,
+            bonusPoints: `+${result.bonusPoints.toFixed(1)}`,
+            bonusModifiers: result.bonusModifiers.map(mod => `${mod.reason}: +${mod.points.toFixed(1)}`),
+            finalScore: result.finalScore.toFixed(1),
+            notes: result.breakdown.notes,
+          });
         });
-        console.log(`[AudiobookSearch] ========================================================`);
+        logger.debug('========================================================');
       }
 
       // Add rank position to each result
@@ -141,7 +133,7 @@ export async function POST(request: NextRequest) {
           : 'No results found',
       });
     } catch (error) {
-      console.error('Failed to search for torrents:', error);
+      logger.error('Failed to search for torrents', { error: error instanceof Error ? error.message : String(error) });
 
       if (error instanceof z.ZodError) {
         return NextResponse.json(

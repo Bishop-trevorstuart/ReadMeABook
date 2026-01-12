@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPlexService } from '@/lib/integrations/plex.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Auth.Plex.HomeUsers');
 
 /**
  * GET /api/auth/plex/home-users
@@ -32,7 +35,7 @@ export async function GET(request: NextRequest) {
       users,
     });
   } catch (error) {
-    console.error('Failed to get home users:', error);
+    logger.error('Failed to get home users', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'ServerError',

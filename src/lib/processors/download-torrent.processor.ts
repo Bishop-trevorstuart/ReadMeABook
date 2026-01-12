@@ -8,7 +8,7 @@ import { prisma } from '../db';
 import { getQBittorrentService } from '../integrations/qbittorrent.service';
 import { getSABnzbdService } from '../integrations/sabnzbd.service';
 import { getConfigService } from '../services/config.service';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 
 /**
  * Process download job
@@ -18,10 +18,10 @@ import { createJobLogger } from '../utils/job-logger';
 export async function processDownloadTorrent(payload: DownloadTorrentPayload): Promise<any> {
   const { requestId, audiobook, torrent, jobId } = payload;
 
-  const logger = jobId ? createJobLogger(jobId, 'DownloadTorrent') : null;
+  const logger = RMABLogger.forJob(jobId, 'DownloadTorrent');
 
-  await logger?.info(`Processing request ${requestId} for "${audiobook.title}"`);
-  await logger?.info(`Selected result: ${torrent.title}`, {
+  logger.info(`Processing request ${requestId} for "${audiobook.title}"`);
+  logger.info(`Selected result: ${torrent.title}`, {
     size: torrent.size,
     seeders: torrent.seeders,
     format: torrent.format,
@@ -48,7 +48,7 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
 
     if (clientType === 'sabnzbd') {
       // Route to SABnzbd
-      await logger?.info(`Routing to SABnzbd`);
+      logger.info(`Routing to SABnzbd`);
 
       const sabnzbd = await getSABnzbdService();
       downloadClientId = await sabnzbd.addNZB(torrent.downloadUrl, {
@@ -57,7 +57,7 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
       });
       downloadClient = 'sabnzbd';
 
-      await logger?.info(`NZB added with ID: ${downloadClientId}`);
+      logger.info(`NZB added with ID: ${downloadClientId}`);
 
       // Create DownloadHistory record
       const downloadHistory = await prisma.downloadHistory.create({
@@ -79,7 +79,7 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
         },
       });
 
-      await logger?.info(`Created download history record: ${downloadHistory.id}`);
+      logger.info(`Created download history record: ${downloadHistory.id}`);
 
       // Trigger monitor download job with initial delay
       const jobQueue = getJobQueueService();
@@ -91,7 +91,7 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
         3 // Wait 3 seconds before first check
       );
 
-      await logger?.info(`Started monitoring job for request ${requestId} (SABnzbd, 3s initial delay)`);
+      logger.info(`Started monitoring job for request ${requestId} (SABnzbd, 3s initial delay)`);
 
       return {
         success: true,
@@ -107,7 +107,7 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
       };
     } else {
       // Route to qBittorrent (default)
-      await logger?.info(`Routing to qBittorrent`);
+      logger.info(`Routing to qBittorrent`);
 
       const qbt = await getQBittorrentService();
       downloadClientId = await qbt.addTorrent(torrent.downloadUrl, {
@@ -118,7 +118,7 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
       });
       downloadClient = 'qbittorrent';
 
-      await logger?.info(`Torrent added with hash: ${downloadClientId}`);
+      logger.info(`Torrent added with hash: ${downloadClientId}`);
 
       // Create DownloadHistory record
       const downloadHistory = await prisma.downloadHistory.create({
@@ -140,7 +140,7 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
         },
       });
 
-      await logger?.info(`Created download history record: ${downloadHistory.id}`);
+      logger.info(`Created download history record: ${downloadHistory.id}`);
 
       // Trigger monitor download job with initial delay
       const jobQueue = getJobQueueService();
@@ -152,7 +152,7 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
         3 // Wait 3 seconds before first check to avoid race condition
       );
 
-      await logger?.info(`Started monitoring job for request ${requestId} (qBittorrent, 3s initial delay)`);
+      logger.info(`Started monitoring job for request ${requestId} (qBittorrent, 3s initial delay)`);
 
       return {
         success: true,
@@ -169,7 +169,7 @@ export async function processDownloadTorrent(payload: DownloadTorrentPayload): P
       };
     }
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
     // Update request status to failed
     await prisma.request.update({

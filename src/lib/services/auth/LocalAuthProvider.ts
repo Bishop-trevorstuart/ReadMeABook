@@ -16,6 +16,9 @@ import { generateAccessToken, generateRefreshToken } from '@/lib/utils/jwt';
 import { getConfigService } from '@/lib/services/config.service';
 import { getEncryptionService } from '@/lib/services/encryption.service';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('LocalAuth');
 
 interface LocalLoginParams extends CallbackParams {
   username: string;
@@ -83,7 +86,7 @@ export class LocalAuthProvider implements IAuthProvider {
         const decryptedHash = this.encryptionService.decrypt(user.authToken || '');
         passwordValid = await bcrypt.compare(password, decryptedHash);
       } catch (error) {
-        console.error('[LocalAuthProvider] Password verification failed:', error);
+        logger.error('Password verification failed', { error: error instanceof Error ? error.message : String(error) });
         return { success: false, error: 'Invalid username or password' };
       }
 
@@ -98,7 +101,7 @@ export class LocalAuthProvider implements IAuthProvider {
       });
 
       // Generate tokens
-      console.log('[LocalAuthProvider] Generating tokens for user:', {
+      logger.info('Generating tokens for user', {
         id: user.id,
         plexId: user.plexId,
         username: user.plexUsername,
@@ -113,7 +116,7 @@ export class LocalAuthProvider implements IAuthProvider {
         isAdmin: user.role === 'admin',
       });
 
-      console.log('[LocalAuthProvider] Tokens generated, returning user data');
+      logger.info('Tokens generated, returning user data');
 
       return {
         success: true,
@@ -126,7 +129,7 @@ export class LocalAuthProvider implements IAuthProvider {
         tokens,
       };
     } catch (error) {
-      console.error('[LocalAuthProvider] Login failed:', error);
+      logger.error('Login failed', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Authentication failed',
@@ -224,7 +227,7 @@ export class LocalAuthProvider implements IAuthProvider {
         tokens,
       };
     } catch (error) {
-      console.error('[LocalAuthProvider] Registration failed:', error);
+      logger.error('Registration failed', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Registration failed',
@@ -243,7 +246,7 @@ export class LocalAuthProvider implements IAuthProvider {
       role: userInfo.isAdmin ? 'admin' : 'user',
     };
 
-    console.log('[LocalAuthProvider] JWT token payload:', tokenPayload);
+    logger.debug('JWT token payload', { tokenPayload });
 
     const accessToken = generateAccessToken(tokenPayload);
     const refreshToken = generateRefreshToken(userInfo.id);
@@ -288,7 +291,7 @@ export class LocalAuthProvider implements IAuthProvider {
 
       return true;
     } catch (error) {
-      console.error('[LocalAuthProvider] Access validation failed:', error);
+      logger.error('Access validation failed', { error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }

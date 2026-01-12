@@ -9,6 +9,9 @@ import { prisma } from '@/lib/db';
 import { getJobQueueService } from '@/lib/services/job-queue.service';
 import { findPlexMatch } from '@/lib/utils/audiobook-matcher';
 import { z } from 'zod';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Requests');
 
 const CreateRequestSchema = z.object({
   audiobook: z.object({
@@ -138,7 +141,7 @@ export async function POST(request: NextRequest) {
         }
 
         // Delete the existing failed/warn/cancelled request
-        console.log(`[Requests] Deleting existing ${existingRequest.status} request ${existingRequest.id} to allow re-request`);
+        logger.debug(`Deleting existing ${existingRequest.status} request ${existingRequest.id} to allow re-request`);
         await prisma.request.delete({
           where: { id: existingRequest.id },
         });
@@ -181,7 +184,7 @@ export async function POST(request: NextRequest) {
         request: newRequest,
       }, { status: 201 });
     } catch (error) {
-      console.error('Failed to create request:', error);
+      logger.error('Failed to create request', { error: error instanceof Error ? error.message : String(error) });
 
       if (error instanceof z.ZodError) {
         return NextResponse.json(
@@ -255,7 +258,7 @@ export async function GET(request: NextRequest) {
         count: requests.length,
       });
     } catch (error) {
-      console.error('Failed to get requests:', error);
+      logger.error('Failed to get requests', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json(
         {
           error: 'FetchError',

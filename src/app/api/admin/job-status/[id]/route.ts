@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAccessToken } from '@/lib/utils/jwt';
 import { getJobQueueService } from '@/lib/services/job-queue.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.JobStatus');
 
 /**
  * GET /api/admin/job-status/:id
@@ -30,17 +33,17 @@ export async function GET(
     // Await params in Next.js 15+
     const { id } = await params;
 
-    console.log(`[JobStatus] Fetching status for job ID: ${id}`);
+    logger.debug(`Fetching status for job ID: ${id}`);
 
     const jobQueueService = getJobQueueService();
     const job = await jobQueueService.getJob(id);
 
     if (!job) {
-      console.log(`[JobStatus] Job not found: ${id}`);
+      logger.debug(`Job not found: ${id}`);
       return NextResponse.json({ error: 'Job not found' }, { status: 404 });
     }
 
-    console.log(`[JobStatus] Job ${id} status: ${job.status}, type: ${job.type}`);
+    logger.debug(`Job ${id} status: ${job.status}, type: ${job.type}`);
 
     return NextResponse.json({
       success: true,
@@ -58,7 +61,7 @@ export async function GET(
       },
     });
   } catch (error) {
-    console.error('Failed to get job status:', error);
+    logger.error('Failed to get job status', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'InternalError',

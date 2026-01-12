@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPlexService } from '@/lib/integrations/plex.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Setup.TestPlex');
 
 export async function POST(request: NextRequest) {
   try {
@@ -49,7 +52,7 @@ export async function POST(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error('[Setup] Plex test failed:', error);
+    logger.error('Plex test failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         success: false,

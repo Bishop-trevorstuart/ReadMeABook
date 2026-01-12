@@ -6,7 +6,7 @@
 import { OrganizeFilesPayload, getJobQueueService } from '../services/job-queue.service';
 import { prisma } from '../db';
 import { getFileOrganizer } from '../utils/file-organizer';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 import { getLibraryService } from '../services/library';
 import { getConfigService } from '../services/config.service';
 
@@ -17,11 +17,10 @@ import { getConfigService } from '../services/config.service';
 export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promise<any> {
   const { requestId, audiobookId, downloadPath, jobId } = payload;
 
-  // Create logger (fallback to console-only if jobId not provided)
-  const logger = jobId ? createJobLogger(jobId, 'OrganizeFiles') : null;
+  const logger = RMABLogger.forJob(jobId, 'OrganizeFiles');
 
-  await logger?.info(`Processing request ${requestId}`);
-  await logger?.info(`Download path: ${downloadPath}`);
+  logger.info(`Processing request ${requestId}`);
+  logger.info(`Download path: ${downloadPath}`);
 
   try {
     // Update request status to processing
@@ -43,7 +42,7 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
       throw new Error(`Audiobook ${audiobookId} not found`);
     }
 
-    await logger?.info(`Organizing: ${audiobook.title} by ${audiobook.author}`);
+    logger.info(`Organizing: ${audiobook.title} by ${audiobook.author}`);
 
     // Get file organizer (reads media_dir from database config)
     const organizer = await getFileOrganizer();
@@ -65,7 +64,7 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
       throw new Error(`File organization failed: ${result.errors.join(', ')}`);
     }
 
-    await logger?.info(`Successfully moved ${result.filesMovedCount} files to ${result.targetPath}`);
+    logger.info(`Successfully moved ${result.filesMovedCount} files to ${result.targetPath}`);
 
     // Update audiobook record with file path and status
     await prisma.audiobook.update({
@@ -89,7 +88,7 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
       },
     });
 
-    await logger?.info(`Request ${requestId} completed successfully - status: downloaded`, {
+    logger.info(`Request ${requestId} completed successfully - status: downloaded`, {
       success: true,
       message: 'Files organized successfully',
       requestId,
@@ -128,13 +127,13 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
         // Trigger scan (implementation is backend-specific)
         await libraryService.triggerLibraryScan(libraryId);
 
-        await logger?.info(
+        logger.info(
           `Triggered ${backendMode} filesystem scan for library ${libraryId}`
         );
 
       } catch (error) {
         // Log error but don't fail the job
-        await logger?.error(
+        logger.error(
           `Failed to trigger filesystem scan: ${error instanceof Error ? error.message : 'Unknown error'}`,
           {
             error: error instanceof Error ? error.stack : undefined,
@@ -144,7 +143,7 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
         // Continue - scheduled scans will eventually detect the book
       }
     } else {
-      await logger?.info(
+      logger.info(
         `${backendMode} filesystem scan trigger disabled (relying on filesystem watcher)`
       );
     }
@@ -161,7 +160,7 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
       errors: result.errors,
     };
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
     const errorMessage = error instanceof Error ? error.message : 'File organization failed';
 
@@ -191,7 +190,7 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
 
       if (newAttempts < currentRequest.maxImportRetries) {
         // Still have retries left - queue for re-import
-        await logger?.warn(`Retryable error for request ${requestId}, queueing for retry (attempt ${newAttempts}/${currentRequest.maxImportRetries})`);
+        logger.warn(`Retryable error for request ${requestId}, queueing for retry (attempt ${newAttempts}/${currentRequest.maxImportRetries})`);
 
         await prisma.request.update({
           where: { id: requestId },
@@ -213,7 +212,7 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
         };
       } else {
         // Max retries exceeded - move to warn status
-        await logger?.warn(`Max retries (${currentRequest.maxImportRetries}) exceeded for request ${requestId}, moving to warn status`);
+        logger.warn(`Max retries (${currentRequest.maxImportRetries}) exceeded for request ${requestId}, moving to warn status`);
 
         await prisma.request.update({
           where: { id: requestId },

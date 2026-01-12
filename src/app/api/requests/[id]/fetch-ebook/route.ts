@@ -11,8 +11,9 @@ import { prisma } from '@/lib/db';
 import { downloadEbook } from '@/lib/services/ebook-scraper';
 import fs from 'fs/promises';
 import path from 'path';
+import { RMABLogger } from '@/lib/utils/logger';
 
-const DEBUG_ENABLED = process.env.LOG_LEVEL === 'debug';
+const logger = RMABLogger.create('API.FetchEbook');
 
 /**
  * Sanitize path component (same logic as file-organizer)
@@ -135,19 +136,21 @@ export async function POST(
           audiobook.audibleAsin
         );
 
-        if (DEBUG_ENABLED) {
-          console.log(`[FetchEbook] Request: ${id}, Title: "${audiobook.title}", Author: "${audiobook.author}"`);
-          console.log(`[FetchEbook] Target path: ${targetPath}`);
-          console.log(`[FetchEbook] Config: format=${preferredFormat}, baseUrl=${baseUrl}, flaresolverr=${flaresolverrUrl || 'none'}`);
-        }
+        logger.debug('Fetch e-book request', {
+          requestId: id,
+          title: audiobook.title,
+          author: audiobook.author,
+          targetPath,
+          format: preferredFormat,
+          baseUrl,
+          flaresolverr: flaresolverrUrl || 'none'
+        });
 
         // Check if target directory exists
         try {
           await fs.access(targetPath);
         } catch {
-          if (DEBUG_ENABLED) {
-            console.log(`[FetchEbook] Target directory not found: ${targetPath}`);
-          }
+          logger.debug(`Target directory not found: ${targetPath}`);
           return NextResponse.json(
             { error: 'Audiobook directory not found. Was the audiobook properly organized?' },
             { status: 400 }
@@ -167,21 +170,21 @@ export async function POST(
         );
 
         if (result.success) {
-          console.log(`[FetchEbook] Success: ${result.filePath ? path.basename(result.filePath) : 'unknown'} for "${audiobook.title}"`);
+          logger.info(`E-book downloaded: ${result.filePath ? path.basename(result.filePath) : 'unknown'} for "${audiobook.title}"`);
           return NextResponse.json({
             success: true,
             message: `E-book downloaded: ${result.filePath ? path.basename(result.filePath) : 'unknown'}`,
             format: result.format,
           });
         } else {
-          console.log(`[FetchEbook] Failed for "${audiobook.title}": ${result.error}`);
+          logger.warn(`E-book download failed for "${audiobook.title}"`, { error: result.error });
           return NextResponse.json({
             success: false,
             message: result.error || 'E-book download failed',
           });
         }
       } catch (error) {
-        console.error('[FetchEbook] Unexpected error:', error instanceof Error ? error.message : error);
+        logger.error('Unexpected error', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: error instanceof Error ? error.message : 'Internal server error' },
           { status: 500 }

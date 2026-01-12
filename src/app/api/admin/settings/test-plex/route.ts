@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { getPlexService } from '@/lib/integrations/plex.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.TestPlex');
 
 export async function POST(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -70,7 +73,7 @@ export async function POST(request: NextRequest) {
           })),
         });
       } catch (error) {
-        console.error('[Admin Settings] Plex test failed:', error);
+        logger.error('Plex test failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

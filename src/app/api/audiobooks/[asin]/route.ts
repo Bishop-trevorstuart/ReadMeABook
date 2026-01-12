@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getAudibleService } from '@/lib/integrations/audible.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Audiobooks.Details');
 
 /**
  * GET /api/audiobooks/[asin]
@@ -45,7 +48,7 @@ export async function GET(
       audiobook,
     });
   } catch (error) {
-    console.error('Failed to get audiobook details:', error);
+    logger.error('Failed to get audiobook details', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'FetchError',

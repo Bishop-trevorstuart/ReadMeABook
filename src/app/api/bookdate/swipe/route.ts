@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.BookDateSwipe');
 
 async function handler(req: AuthenticatedRequest) {
   try {
@@ -97,7 +100,7 @@ async function handler(req: AuthenticatedRequest) {
             },
           });
 
-          console.log(`[BookDate] Created request for "${recommendation.title}"`);
+          logger.info(`Created request for "${recommendation.title}"`);
 
           // Trigger search job (same as regular request creation)
           const { getJobQueueService } = await import('@/lib/services/job-queue.service');
@@ -108,11 +111,11 @@ async function handler(req: AuthenticatedRequest) {
             author: audiobook.author,
           });
 
-          console.log(`[BookDate] Triggered search job for request ${newRequest.id}`);
+          logger.info(`Triggered search job for request ${newRequest.id}`);
         }
 
       } catch (error) {
-        console.error('[BookDate] Error creating request:', error);
+        logger.error('Error creating request', { error: error instanceof Error ? error.message : String(error) });
         // Don't fail the swipe if request creation fails
       }
     }
@@ -124,7 +127,7 @@ async function handler(req: AuthenticatedRequest) {
     });
 
   } catch (error: any) {
-    console.error('[BookDate] Swipe error:', error);
+    logger.error('Swipe error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Failed to record swipe' },
       { status: 500 }

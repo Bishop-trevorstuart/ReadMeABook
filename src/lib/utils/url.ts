@@ -3,6 +3,10 @@
  * Documentation: documentation/backend/services/environment.md
  */
 
+import { RMABLogger } from './logger';
+
+const logger = RMABLogger.create('URL');
+
 /**
  * Get application base URL for OAuth callbacks and redirects
  *
@@ -35,22 +39,20 @@ export function getBaseUrl(): string {
 
   // Validate URL format
   if (!url.startsWith('http://') && !url.startsWith('https://')) {
-    console.warn(`[URL Utility] Invalid base URL format: ${url}. URLs must start with http:// or https://`);
+    logger.warn(`Invalid base URL format: ${url}. URLs must start with http:// or https://`);
   }
 
   // Production warning if using localhost
   if (process.env.NODE_ENV === 'production' && url.includes('localhost')) {
-    console.warn('[URL Utility] ⚠️  WARNING: Using localhost URL in production. OAuth callbacks may fail. Set PUBLIC_URL environment variable.');
+    logger.warn('Using localhost URL in production. OAuth callbacks may fail. Set PUBLIC_URL environment variable.');
   }
 
   // Log which variable is being used (debug only)
-  if (process.env.LOG_LEVEL === 'debug') {
-    const source = publicUrl ? 'PUBLIC_URL' :
-                   nextAuthUrl ? 'NEXTAUTH_URL' :
-                   baseUrl ? 'BASE_URL' :
-                   'default (localhost)';
-    console.debug(`[URL Utility] Using base URL from ${source}: ${url}`);
-  }
+  const source = publicUrl ? 'PUBLIC_URL' :
+                 nextAuthUrl ? 'NEXTAUTH_URL' :
+                 baseUrl ? 'BASE_URL' :
+                 'default (localhost)';
+  logger.debug(`Using base URL from ${source}: ${url}`);
 
   return url;
 }

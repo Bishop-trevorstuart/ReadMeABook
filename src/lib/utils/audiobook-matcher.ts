@@ -9,9 +9,10 @@
 import { prisma } from '@/lib/db';
 import { compareTwoStrings } from 'string-similarity';
 import { LibraryItem } from '@/lib/services/library';
+import { RMABLogger } from './logger';
 
-// Debug logging controlled by LOG_LEVEL environment variable
-const DEBUG_ENABLED = process.env.LOG_LEVEL === 'debug';
+// Module-level logger
+const logger = RMABLogger.create('AudiobookMatcher');
 
 export interface AudiobookMatchInput {
   asin: string;
@@ -109,7 +110,7 @@ export async function findPlexMatch(
   // If no candidates found, log and return null
   if (plexBooks.length === 0) {
     matchResult.matchType = 'no_candidates';
-    if (DEBUG_ENABLED) console.log(JSON.stringify({ MATCHER: matchResult }));
+    logger.debug('Matcher result', { MATCHER: matchResult });
     return null;
   }
 
@@ -125,7 +126,7 @@ export async function findPlexMatch(
         asin: plexBook.asin,
         confidence: 100,
       };
-      if (DEBUG_ENABLED) console.log(JSON.stringify({ MATCHER: matchResult }));
+      logger.debug('Matcher result', { MATCHER: matchResult });
       return plexBook;
     }
   }
@@ -141,7 +142,7 @@ export async function findPlexMatch(
         plexAuthor: plexBook.author,
         confidence: 100,
       };
-      if (DEBUG_ENABLED) console.log(JSON.stringify({ MATCHER: matchResult }));
+      logger.debug('Matcher result', { MATCHER: matchResult });
       return plexBook;
     }
   }
@@ -182,7 +183,7 @@ export async function findPlexMatch(
 
   if (validCandidates.length === 0) {
     matchResult.matchType = 'asin_filtered_all';
-    if (DEBUG_ENABLED) console.log(JSON.stringify({ MATCHER: matchResult }));
+    logger.debug('Matcher result', { MATCHER: matchResult });
     return null;
   }
 
@@ -250,13 +251,13 @@ export async function findPlexMatch(
       plexAuthor: bestMatch.plexBook.author,
       confidence: Math.round(bestMatch.score * 100),
     };
-    if (DEBUG_ENABLED) console.log(JSON.stringify({ MATCHER: matchResult }));
+    logger.debug('Matcher result', { MATCHER: matchResult });
     return bestMatch.plexBook;
   }
 
   // No match found
   matchResult.matchType = 'fuzzy_below_threshold';
-  if (DEBUG_ENABLED) console.log(JSON.stringify({ MATCHER: matchResult }));
+  logger.debug('Matcher result', { MATCHER: matchResult });
   return null;
 }
 
@@ -362,15 +363,12 @@ export async function enrichAudiobooksWithMatches(
     }
   }
 
-  if (DEBUG_ENABLED) {
-    const summary = {
-      total: results.length,
-      available: results.filter(r => r.isAvailable).length,
-      notAvailable: results.filter(r => !r.isAvailable).length,
-      requested: userId ? results.filter(r => (r as any).isRequested).length : 'N/A',
-    };
-    console.log(JSON.stringify({ MATCHER_BATCH_SUMMARY: summary }));
-  }
+  logger.debug('Batch summary', {
+    total: results.length,
+    available: results.filter(r => r.isAvailable).length,
+    notAvailable: results.filter(r => !r.isAvailable).length,
+    requested: userId ? results.filter(r => (r as any).isRequested).length : 'N/A',
+  });
 
   return results;
 }
@@ -405,16 +403,12 @@ export function matchAudiobook(
       item.asin?.toLowerCase() === request.asin?.toLowerCase()
     );
     if (asinMatch) {
-      if (DEBUG_ENABLED) {
-        console.log(JSON.stringify({
-          GENERIC_MATCHER: {
-            matchType: 'asin_exact',
-            input: { title: request.title, asin: request.asin },
-            matched: { title: asinMatch.title, asin: asinMatch.asin },
-            confidence: 100
-          }
-        }));
-      }
+      logger.debug('Generic matcher result', {
+        matchType: 'asin_exact',
+        input: { title: request.title, asin: request.asin },
+        matched: { title: asinMatch.title, asin: asinMatch.asin },
+        confidence: 100
+      });
       return asinMatch;
     }
   }
@@ -426,16 +420,12 @@ export function matchAudiobook(
       item.isbn && normalizeISBN(item.isbn) === normalizedRequestISBN
     );
     if (isbnMatch) {
-      if (DEBUG_ENABLED) {
-        console.log(JSON.stringify({
-          GENERIC_MATCHER: {
-            matchType: 'isbn_exact',
-            input: { title: request.title, isbn: request.isbn },
-            matched: { title: isbnMatch.title, isbn: isbnMatch.isbn },
-            confidence: 95
-          }
-        }));
-      }
+      logger.debug('Generic matcher result', {
+        matchType: 'isbn_exact',
+        input: { title: request.title, isbn: request.isbn },
+        matched: { title: isbnMatch.title, isbn: isbnMatch.isbn },
+        confidence: 95
+      });
       return isbnMatch;
     }
   }
@@ -463,35 +453,27 @@ export function matchAudiobook(
 
   // Accept if score >= 70%
   if (bestMatch && bestMatch.score >= 0.7) {
-    if (DEBUG_ENABLED) {
-      console.log(JSON.stringify({
-        GENERIC_MATCHER: {
-          matchType: 'fuzzy',
-          input: { title: request.title, author: request.author },
-          matched: { title: bestMatch.item.title, author: bestMatch.item.author },
-          scores: {
-            title: Math.round(bestMatch.titleScore * 100),
-            author: Math.round(bestMatch.authorScore * 100),
-            overall: Math.round(bestMatch.score * 100)
-          },
-          confidence: Math.round(bestMatch.score * 100)
-        }
-      }));
-    }
+    logger.debug('Generic matcher result', {
+      matchType: 'fuzzy',
+      input: { title: request.title, author: request.author },
+      matched: { title: bestMatch.item.title, author: bestMatch.item.author },
+      scores: {
+        title: Math.round(bestMatch.titleScore * 100),
+        author: Math.round(bestMatch.authorScore * 100),
+        overall: Math.round(bestMatch.score * 100)
+      },
+      confidence: Math.round(bestMatch.score * 100)
+    });
     return bestMatch.item;
   }
 
   // No match found
-  if (DEBUG_ENABLED) {
-    console.log(JSON.stringify({
-      GENERIC_MATCHER: {
-        matchType: 'no_match',
-        input: { title: request.title, author: request.author },
-        bestScore: bestMatch ? Math.round(bestMatch.score * 100) : 0,
-        threshold: 70
-      }
-    }));
-  }
+  logger.debug('Generic matcher result', {
+    matchType: 'no_match',
+    input: { title: request.title, author: request.author },
+    bestScore: bestMatch ? Math.round(bestMatch.score * 100) : 0,
+    threshold: 70
+  });
 
   return null;
 }

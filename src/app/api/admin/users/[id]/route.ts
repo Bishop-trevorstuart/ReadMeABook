@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Users');
 
 export async function PUT(
   request: NextRequest,
@@ -89,7 +92,7 @@ export async function PUT(
 
         return NextResponse.json({ user: updatedUser });
       } catch (error) {
-        console.error('[Admin] Failed to update user:', error);
+        logger.error('Failed to update user', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to update user' },
           { status: 500 }
@@ -184,7 +187,7 @@ export async function DELETE(
           message: `User "${targetUser.plexUsername}" has been deleted. Their ${targetUser._count.requests} request(s) have been preserved.`
         });
       } catch (error) {
-        console.error('[Admin] Failed to delete user:', error);
+        logger.error('Failed to delete user', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to delete user' },
           { status: 500 }

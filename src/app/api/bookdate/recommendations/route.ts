@@ -14,6 +14,9 @@ import {
   isAlreadyRequested,
   isAlreadySwiped,
 } from '@/lib/bookdate/helpers';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.BookDate.Recommendations');
 
 async function handler(req: AuthenticatedRequest) {
   try {
@@ -75,7 +78,7 @@ async function handler(req: AuthenticatedRequest) {
     };
 
     // Build prompt and call AI
-    console.log('[BookDate] Generating new recommendations for user:', userId);
+    logger.info('Generating new recommendations for user', { userId });
     const prompt = await buildAIPrompt(userId, userPreferences);
     const aiResponse = await callAI(config.provider, config.model, config.apiKey, prompt);
 
@@ -83,7 +86,7 @@ async function handler(req: AuthenticatedRequest) {
       throw new Error('Invalid AI response format: missing recommendations array');
     }
 
-    console.log(`[BookDate] AI returned ${aiResponse.recommendations.length} recommendations`);
+    logger.debug('AI returned recommendations', { count: aiResponse.recommendations.length });
 
     // Match to Audnexus and filter
     const batchId = `batch_${Date.now()}`;
@@ -91,19 +94,19 @@ async function handler(req: AuthenticatedRequest) {
 
     for (const rec of aiResponse.recommendations) {
       if (!rec.title || !rec.author) {
-        console.warn('[BookDate] Skipping recommendation with missing title or author');
+        logger.warn('Skipping recommendation with missing title or author');
         continue;
       }
 
       // Check if already swiped
       if (await isAlreadySwiped(userId, rec.title, rec.author)) {
-        console.log(`[BookDate] Skipping already swiped: "${rec.title}"`);
+        logger.debug('Skipping already swiped', { title: rec.title });
         continue;
       }
 
       // Check if in library
       if (await isInLibrary(userId, rec.title, rec.author)) {
-        console.log(`[BookDate] Skipping already in library: "${rec.title}"`);
+        logger.debug('Skipping already in library', { title: rec.title });
         continue;
       }
 
@@ -112,20 +115,20 @@ async function handler(req: AuthenticatedRequest) {
         const audnexusMatch = await matchToAudnexus(rec.title, rec.author);
 
         if (!audnexusMatch) {
-          console.warn(`[BookDate] No Audnexus match: "${rec.title}" by ${rec.author}`);
+          logger.warn('No Audnexus match', { title: rec.title, author: rec.author });
           continue;
         }
 
         // Check again if in library with ASIN for exact matching
         // This catches books that might have different titles (e.g., "The Tenant" vs "The Tenant (Unabridged)")
         if (await isInLibrary(userId, audnexusMatch.title, audnexusMatch.author, audnexusMatch.asin)) {
-          console.log(`[BookDate] Book "${audnexusMatch.title}" (ASIN: ${audnexusMatch.asin}) is in library, skipping`);
+          logger.debug('Book is in library, skipping', { title: audnexusMatch.title, asin: audnexusMatch.asin });
           continue;
         }
 
         // Check if already requested
         if (await isAlreadyRequested(userId, audnexusMatch.asin)) {
-          console.log(`[BookDate] Skipping already requested: "${rec.title}"`);
+          logger.debug('Skipping already requested', { title: rec.title });
           continue;
         }
 
@@ -147,12 +150,12 @@ async function handler(req: AuthenticatedRequest) {
         }
 
       } catch (error) {
-        console.warn(`[BookDate] Match error for "${rec.title}":`, error);
+        logger.warn('Match error', { title: rec.title, error: error instanceof Error ? error.message : String(error) });
         continue;
       }
     }
 
-    console.log(`[BookDate] Matched ${matched.length} recommendations`);
+    logger.info('Matched recommendations', { count: matched.length });
 
     // Save to database
     if (matched.length > 0) {
@@ -180,7 +183,7 @@ async function handler(req: AuthenticatedRequest) {
     });
 
   } catch (error: any) {
-    console.error('[BookDate] Recommendations error:', error);
+    logger.error('Recommendations error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: error.message || 'Failed to generate recommendations',

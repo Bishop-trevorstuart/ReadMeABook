@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Metrics');
 
 export async function GET(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -77,7 +80,7 @@ export async function GET(request: NextRequest) {
       systemHealth,
     });
       } catch (error) {
-        console.error('[Admin] Failed to fetch metrics:', error);
+        logger.error('Failed to fetch metrics', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to fetch metrics' },
           { status: 500 }

@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { deleteRequest } from '@/lib/services/request-delete.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Requests');
 
 /**
  * DELETE /api/admin/requests/[id]
@@ -62,7 +65,7 @@ export async function DELETE(
           },
         });
       } catch (error) {
-        console.error('[Admin] Failed to delete request:', error);
+        logger.error('Failed to delete request', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             error: 'DeleteError',

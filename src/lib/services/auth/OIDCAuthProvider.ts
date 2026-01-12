@@ -18,6 +18,9 @@ import { generateAccessToken, generateRefreshToken } from '@/lib/utils/jwt';
 import { getBaseUrl } from '@/lib/utils/url';
 import { getSchedulerService } from '@/lib/services/scheduler.service';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('OIDCAuth');
 
 // In-memory storage for OIDC flow state (temporary until callback completes)
 // In production, this could be replaced with Redis for multi-instance support
@@ -109,7 +112,7 @@ export class OIDCAuthProvider implements IAuthProvider {
         state,
       };
     } catch (error) {
-      console.error('[OIDCAuthProvider] Failed to initiate login:', error);
+      logger.error('Failed to initiate login', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to initiate OIDC authentication');
     }
   }
@@ -150,14 +153,12 @@ export class OIDCAuthProvider implements IAuthProvider {
       const client = await this.getClient();
       const redirectUri = await this.getRedirectUri();
 
-      if (process.env.LOG_LEVEL === 'debug') {
-        console.debug('[OIDCAuthProvider] Exchanging code for tokens', {
-          redirectUri,
-          hasCode: !!code,
-          hasState: !!state,
-          stateMatches: state === flowState.state,
-        });
-      }
+      logger.debug('Exchanging code for tokens', {
+        redirectUri,
+        hasCode: !!code,
+        hasState: !!state,
+        stateMatches: state === flowState.state,
+      });
 
       // Exchange code for tokens
       const tokenSet = await client.callback(
@@ -259,7 +260,7 @@ export class OIDCAuthProvider implements IAuthProvider {
         isFirstLogin: result.isFirstLogin,
       };
     } catch (error) {
-      console.error('[OIDCAuthProvider] Callback failed:', error);
+      logger.error('Callback failed', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Authentication failed',
@@ -282,7 +283,7 @@ export class OIDCAuthProvider implements IAuthProvider {
         const requiredGroup = await this.configService.get('oidc.access_group_value');
 
         if (!requiredGroup) {
-          console.error('[OIDCAuthProvider] Group claim access control enabled but no required group configured');
+          logger.error('Group claim access control enabled but no required group configured');
           return false;
         }
 
@@ -432,7 +433,7 @@ export class OIDCAuthProvider implements IAuthProvider {
     // If this is the first user, trigger initial jobs (Audible refresh + Library scan)
     // This happens after OIDC-only setup where no admin was created during wizard
     if (isFirstUser) {
-      console.log('[OIDCAuthProvider] First OIDC user created - triggering initial jobs');
+      logger.info('First OIDC user created - triggering initial jobs');
 
       // Check if initial jobs have already been run (avoid duplicate runs)
       const initialJobsRun = await this.configService.get('system.initial_jobs_run');
@@ -442,7 +443,7 @@ export class OIDCAuthProvider implements IAuthProvider {
 
         // Trigger jobs in background (don't block authentication)
         this.triggerInitialJobs().catch(err => {
-          console.error('[OIDCAuthProvider] Failed to trigger initial jobs:', err);
+          logger.error('Failed to trigger initial jobs', { error: err instanceof Error ? err.message : String(err) });
         });
       }
     }
@@ -476,22 +477,22 @@ export class OIDCAuthProvider implements IAuthProvider {
         where: { type: 'plex_library_scan' },
       });
 
-      console.log('[OIDCAuthProvider] Triggering initial jobs...');
+      logger.info('Triggering initial jobs...');
 
       // Trigger Audible refresh
       if (audibleJob) {
         await schedulerService.triggerJobNow(audibleJob.id);
-        console.log('[OIDCAuthProvider] Triggered Audible refresh job');
+        logger.info('Triggered Audible refresh job');
       } else {
-        console.warn('[OIDCAuthProvider] Audible refresh job not found');
+        logger.warn('Audible refresh job not found');
       }
 
       // Trigger Library scan
       if (libraryJob) {
         await schedulerService.triggerJobNow(libraryJob.id);
-        console.log('[OIDCAuthProvider] Triggered Library scan job');
+        logger.info('Triggered Library scan job');
       } else {
-        console.warn('[OIDCAuthProvider] Library scan job not found');
+        logger.warn('Library scan job not found');
       }
 
       // Mark initial jobs as run
@@ -501,9 +502,9 @@ export class OIDCAuthProvider implements IAuthProvider {
         create: { key: 'system.initial_jobs_run', value: 'true' },
       });
 
-      console.log('[OIDCAuthProvider] Initial jobs triggered successfully');
+      logger.info('Initial jobs triggered successfully');
     } catch (error) {
-      console.error('[OIDCAuthProvider] Error triggering initial jobs:', error);
+      logger.error('Error triggering initial jobs', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
@@ -556,7 +557,7 @@ export class OIDCAuthProvider implements IAuthProvider {
 
       return true;
     } catch (error) {
-      console.error('[OIDCAuthProvider] Access validation failed:', error);
+      logger.error('Access validation failed', { error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }

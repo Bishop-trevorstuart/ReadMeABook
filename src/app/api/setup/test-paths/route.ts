@@ -6,21 +6,24 @@
 import { NextRequest, NextResponse } from 'next/server';
 import fs from 'fs/promises';
 import path from 'path';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Setup.TestPaths');
 
 async function testPath(dirPath: string): Promise<boolean> {
   try {
     // Try to access the path
     try {
       await fs.access(dirPath);
-      console.log(`[Setup] Path exists: ${dirPath}`);
+      logger.debug('Path exists', { path: dirPath });
     } catch (accessError) {
       // Path doesn't exist, try to create it
-      console.log(`[Setup] Path doesn't exist, creating: ${dirPath}`);
+      logger.debug('Path does not exist, creating', { path: dirPath });
       try {
         await fs.mkdir(dirPath, { recursive: true });
-        console.log(`[Setup] Successfully created path: ${dirPath}`);
+        logger.debug('Successfully created path', { path: dirPath });
       } catch (mkdirError) {
-        console.error(`[Setup] Failed to create path ${dirPath}:`, mkdirError);
+        logger.error('Failed to create path', { path: dirPath, error: mkdirError instanceof Error ? mkdirError.message : String(mkdirError) });
         // If mkdir fails, it means the parent mount doesn't exist or isn't writable
         return false;
       }
@@ -35,7 +38,7 @@ async function testPath(dirPath: string): Promise<boolean> {
 
     return true;
   } catch (error) {
-    console.error(`[Setup] Path test failed for ${dirPath}:`, error);
+    logger.error('Path test failed', { path: dirPath, error: error instanceof Error ? error.message : String(error) });
     return false;
   }
 }
@@ -81,7 +84,7 @@ export async function POST(request: NextRequest) {
       message: 'Directories are ready and writable (created if needed)',
     });
   } catch (error) {
-    console.error('[Setup] Path validation failed:', error);
+    logger.error('Path validation failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         success: false,

@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '../db';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 import { getJobQueueService } from '../services/job-queue.service';
 
 export interface MonitorRssFeedsPayload {
@@ -16,9 +16,9 @@ export interface MonitorRssFeedsPayload {
 
 export async function processMonitorRssFeeds(payload: MonitorRssFeedsPayload): Promise<any> {
   const { jobId, scheduledJobId } = payload;
-  const logger = jobId ? createJobLogger(jobId, 'MonitorRssFeeds') : null;
+  const logger = RMABLogger.forJob(jobId, 'MonitorRssFeeds');
 
-  await logger?.info(`Starting RSS feed monitoring...`);
+  logger.info(`Starting RSS feed monitoring...`);
 
   // Get indexer configuration
   const { getConfigService } = await import('../services/config.service');
@@ -26,7 +26,7 @@ export async function processMonitorRssFeeds(payload: MonitorRssFeedsPayload): P
   const indexersConfigStr = await configService.get('prowlarr_indexers');
 
   if (!indexersConfigStr) {
-    await logger?.warn(`No indexers configured, skipping`);
+    logger.warn(`No indexers configured, skipping`);
     return { success: false, message: 'No indexers configured', skipped: true };
   }
 
@@ -38,11 +38,11 @@ export async function processMonitorRssFeeds(payload: MonitorRssFeedsPayload): P
   );
 
   if (rssEnabledIndexers.length === 0) {
-    await logger?.warn(`No indexers with RSS enabled, skipping`);
+    logger.warn(`No indexers with RSS enabled, skipping`);
     return { success: false, message: 'No RSS-enabled indexers', skipped: true };
   }
 
-  await logger?.info(`Monitoring ${rssEnabledIndexers.length} RSS-enabled indexers`);
+  logger.info(`Monitoring ${rssEnabledIndexers.length} RSS-enabled indexers`);
 
   // Get RSS feeds from all enabled indexers
   const { getProwlarrService } = await import('../integrations/prowlarr.service');
@@ -51,7 +51,7 @@ export async function processMonitorRssFeeds(payload: MonitorRssFeedsPayload): P
   const indexerIds = rssEnabledIndexers.map((i: any) => i.id);
   const rssResults = await prowlarrService.getAllRssFeeds(indexerIds);
 
-  await logger?.info(`Retrieved ${rssResults.length} items from RSS feeds`);
+  logger.info(`Retrieved ${rssResults.length} items from RSS feeds`);
 
   if (rssResults.length === 0) {
     return { success: true, message: 'No RSS results', matched: 0 };
@@ -67,7 +67,7 @@ export async function processMonitorRssFeeds(payload: MonitorRssFeedsPayload): P
     take: 100,
   });
 
-  await logger?.info(`Found ${missingRequests.length} requests awaiting search`);
+  logger.info(`Found ${missingRequests.length} requests awaiting search`);
 
   if (missingRequests.length === 0) {
     return { success: true, message: 'No missing requests', matched: 0 };
@@ -92,7 +92,7 @@ export async function processMonitorRssFeeds(payload: MonitorRssFeedsPayload): P
       const titleMatchCount = titleWords.filter(word => word.length > 2 && torrentTitle.includes(word)).length;
 
       if (hasAuthor && titleMatchCount >= 2) {
-        await logger?.info(`Match found! "${audiobook.title}" by ${audiobook.author} matches torrent: ${torrent.title}`);
+        logger.info(`Match found! "${audiobook.title}" by ${audiobook.author} matches torrent: ${torrent.title}`);
 
         // Trigger search job to process this request
         try {
@@ -102,9 +102,9 @@ export async function processMonitorRssFeeds(payload: MonitorRssFeedsPayload): P
             author: audiobook.author,
           });
           matched++;
-          await logger?.info(`Triggered search job for request ${request.id}`);
+          logger.info(`Triggered search job for request ${request.id}`);
         } catch (error) {
-          await logger?.error(`Failed to trigger search for request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          logger.error(`Failed to trigger search for request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
 
         // Only trigger once per request
@@ -113,7 +113,7 @@ export async function processMonitorRssFeeds(payload: MonitorRssFeedsPayload): P
     }
   }
 
-  await logger?.info(`RSS monitoring complete: ${matched} matches found and queued for processing`);
+  logger.info(`RSS monitoring complete: ${matched} matches found and queued for processing`);
 
   return {
     success: true,

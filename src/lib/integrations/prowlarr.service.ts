@@ -6,6 +6,10 @@
 import axios, { AxiosInstance } from 'axios';
 import { XMLParser } from 'fast-xml-parser';
 import { TorrentResult } from '../utils/ranking-algorithm';
+import { RMABLogger } from '../utils/logger';
+
+// Module-level logger
+const logger = RMABLogger.create('Prowlarr');
 
 export interface SearchFilters {
   category?: number;
@@ -96,8 +100,7 @@ export class ProwlarrService {
 
     // Debug interceptor to log actual outgoing requests
     this.client.interceptors.request.use((config) => {
-      console.log(`[Prowlarr] Actual request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`);
-      console.log(`[Prowlarr] Request params:`, JSON.stringify(config.params));
+      logger.debug(`Actual request: ${config.method?.toUpperCase()} ${config.baseURL}${config.url}`, { params: config.params });
       return config;
     });
   }
@@ -130,12 +133,12 @@ export class ProwlarrService {
       }
 
       const response = await this.client.get('/search', { params });
-      console.log(`[Prowlarr] Raw API response: ${response.data.length} results`);
+      logger.info(` Raw API response: ${response.data.length} results`);
 
       // Debug: Log first raw result to see structure and protocol field
       if (response.data.length > 0) {
         const firstResult = response.data[0];
-        console.log(`[Prowlarr] First raw result - protocol: "${firstResult.protocol}", indexer: "${firstResult.indexer}", title: "${firstResult.title?.substring(0, 50)}..."`);
+        logger.info(` First raw result - protocol: "${firstResult.protocol}", indexer: "${firstResult.indexer}", title: "${firstResult.title?.substring(0, 50)}..."`);
 
         // Check protocol distribution in raw results
         const rawProtocols = response.data.reduce((acc: Record<string, number>, r: any) => {
@@ -143,21 +146,21 @@ export class ProwlarrService {
           acc[proto] = (acc[proto] || 0) + 1;
           return acc;
         }, {});
-        console.log(`[Prowlarr] Raw protocol distribution:`, JSON.stringify(rawProtocols));
+        logger.info(`Raw protocol distribution`, { protocols: rawProtocols });
       }
 
-      // Debug: Log first raw result full structure (debug mode only)
-      if (process.env.LOG_LEVEL === 'debug' && response.data.length > 0) {
-        console.log('[Prowlarr] Sample raw result from API:', JSON.stringify(response.data[0], null, 2));
+      // Debug: Log first raw result full structure (automatically filtered by LOG_LEVEL)
+      if (response.data.length > 0) {
+        logger.debug('Sample raw result from API', response.data[0]);
       }
 
       // Transform Prowlarr results to our format
       const results = response.data
         .map((result: ProwlarrSearchResult, index: number) => {
           const transformed = this.transformResult(result);
-          if (!transformed && process.env.LOG_LEVEL === 'debug') {
-            // Log the full raw result that was skipped (debug mode only)
-            console.log(`[Prowlarr] Result #${index + 1} was skipped. Raw data:`, JSON.stringify(result, null, 2));
+          if (!transformed) {
+            // Log the full raw result that was skipped (automatically filtered by LOG_LEVEL)
+            logger.debug(`Result #${index + 1} was skipped`, { rawData: result });
           }
           return transformed;
         })
@@ -181,11 +184,11 @@ export class ProwlarrService {
         filtered = filtered.slice(0, filters.maxResults);
       }
 
-      console.log(`Prowlarr search for "${query}" returned ${filtered.length} results`);
+      logger.info(`Search for "${query}" returned ${filtered.length} results`);
 
       return filtered;
     } catch (error) {
-      console.error('Prowlarr search failed:', error);
+      logger.error('Search failed', { error: error instanceof Error ? error.message : String(error) });
       throw new Error(
         `Failed to search Prowlarr: ${error instanceof Error ? error.message : 'Unknown error'}`
       );
@@ -200,7 +203,7 @@ export class ProwlarrService {
       const response = await this.client.get('/indexer');
       return response.data;
     } catch (error) {
-      console.error('Failed to get Prowlarr indexers:', error);
+      logger.error('Failed to get indexers', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to get indexers from Prowlarr');
     }
   }
@@ -213,7 +216,7 @@ export class ProwlarrService {
       await this.client.get('/health');
       return true;
     } catch (error) {
-      console.error('Prowlarr connection test failed:', error);
+      logger.error('Connection test failed', { error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -226,7 +229,7 @@ export class ProwlarrService {
       const response = await this.client.get('/indexerstats');
       return response.data;
     } catch (error) {
-      console.error('Failed to get Prowlarr stats:', error);
+      logger.error('Failed to get stats', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to get indexer statistics');
     }
   }
@@ -292,7 +295,7 @@ export class ProwlarrService {
 
           // Skip torrents without a valid download URL
           if (!downloadUrl || typeof downloadUrl !== 'string' || downloadUrl.trim() === '') {
-            console.warn(`[Prowlarr] Skipping torrent "${item.title || 'Unknown'}" - missing download URL`);
+            logger.warn(` Skipping torrent "${item.title || 'Unknown'}" - missing download URL`);
             continue;
           }
 
@@ -315,16 +318,16 @@ export class ProwlarrService {
 
           results.push(result);
         } catch (error) {
-          console.error('Failed to parse RSS item:', error);
+          logger.error('Failed to parse RSS item', { error: error instanceof Error ? error.message : String(error) });
           // Continue with other items
         }
       }
 
-      console.log(`RSS feed for indexer ${indexerId} returned ${results.length} results`);
+      logger.info(`RSS feed for indexer ${indexerId} returned ${results.length} results`);
 
       return results;
     } catch (error) {
-      console.error(`Failed to get RSS feed for indexer ${indexerId}:`, error);
+      logger.error(`Failed to get RSS feed for indexer ${indexerId}`, { error: error instanceof Error ? error.message : String(error) });
       throw new Error(`Failed to get RSS feed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     }
   }
@@ -340,12 +343,12 @@ export class ProwlarrService {
         const results = await this.getRssFeed(indexerId);
         allResults.push(...results);
       } catch (error) {
-        console.error(`Failed to get RSS feed for indexer ${indexerId}:`, error);
+        logger.error(`Failed to get RSS feed for indexer ${indexerId}`, { error: error instanceof Error ? error.message : String(error) });
         // Continue with other indexers even if one fails
       }
     }
 
-    console.log(`RSS feeds from ${indexerIds.length} indexers returned ${allResults.length} total results`);
+    logger.info(`RSS feeds from ${indexerIds.length} indexers returned ${allResults.length} total results`);
 
     return allResults;
   }
@@ -368,33 +371,33 @@ export class ProwlarrService {
         acc[proto] = (acc[proto] || 0) + 1;
         return acc;
       }, {} as Record<string, number>);
-      console.log(`[Prowlarr] Protocol distribution in ${results.length} results:`, JSON.stringify(protocolCounts));
+      logger.debug(`Protocol distribution in ${results.length} results`, { protocols: protocolCounts });
 
       // Debug: Log first few results to see their protocols
       if (results.length > 0 && results.length <= 5) {
         results.forEach((r, i) => {
-          console.log(`[Prowlarr] Result ${i + 1}: protocol="${r.protocol || 'undefined'}", url="${r.downloadUrl.substring(0, 80)}..."`);
+          logger.info(` Result ${i + 1}: protocol="${r.protocol || 'undefined'}", url="${r.downloadUrl.substring(0, 80)}..."`);
         });
       } else if (results.length > 5) {
-        console.log(`[Prowlarr] First 3 results:`);
+        logger.info(` First 3 results:`);
         results.slice(0, 3).forEach((r, i) => {
-          console.log(`[Prowlarr]   ${i + 1}: protocol="${r.protocol || 'undefined'}", isNZB=${ProwlarrService.isNZBResult(r)}`);
+          logger.info(`   ${i + 1}: protocol="${r.protocol || 'undefined'}", isNZB=${ProwlarrService.isNZBResult(r)}`);
         });
       }
 
       if (clientType === 'sabnzbd') {
         // Filter for NZB results only
         const filtered = results.filter(result => ProwlarrService.isNZBResult(result));
-        console.log(`[Prowlarr] Filtered ${results.length} results to ${filtered.length} NZB results for SABnzbd`);
+        logger.info(` Filtered ${results.length} results to ${filtered.length} NZB results for SABnzbd`);
         return filtered;
       } else {
         // Filter for torrent results only (default)
         const filtered = results.filter(result => !ProwlarrService.isNZBResult(result));
-        console.log(`[Prowlarr] Filtered ${results.length} results to ${filtered.length} torrent results for qBittorrent`);
+        logger.info(` Filtered ${results.length} results to ${filtered.length} torrent results for qBittorrent`);
         return filtered;
       }
     } catch (error) {
-      console.error('[Prowlarr] Failed to filter by protocol, returning all results:', error);
+      logger.error('Failed to filter by protocol, returning all results', { error: error instanceof Error ? error.message : String(error) });
       return results; // Fallback: return unfiltered if config fails
     }
   }
@@ -435,7 +438,7 @@ export class ProwlarrService {
 
       // Validate we have a valid download URL
       if (!downloadUrl || typeof downloadUrl !== 'string' || downloadUrl.trim() === '') {
-        console.warn(`[Prowlarr] Skipping result "${result.title}" - missing both downloadUrl and magnetUrl`);
+        logger.warn(` Skipping result "${result.title}" - missing both downloadUrl and magnetUrl`);
         return null;
       }
 
@@ -464,7 +467,7 @@ export class ProwlarrService {
         protocol: result.protocol, // 'torrent' or 'usenet'
       };
     } catch (error) {
-      console.error('Failed to transform result:', result, error);
+      logger.error('Failed to transform result', { title: result?.title, error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -513,7 +516,7 @@ export class ProwlarrService {
 
     // Log detected flags for debugging
     if (flags.length > 0) {
-      console.log(`[Prowlarr] ✓ Detected flags for "${result.title.substring(0, 50)}...": [${flags.join(', ')}]`);
+      logger.info(` ✓ Detected flags for "${result.title.substring(0, 50)}...": [${flags.join(', ')}]`);
     }
 
     return flags;
@@ -576,7 +579,7 @@ export async function getProwlarrService(): Promise<ProwlarrService> {
     // Test connection
     const isConnected = await prowlarrService.testConnection();
     if (!isConnected) {
-      console.warn('Warning: Prowlarr connection test failed');
+      logger.warn('Connection test failed');
     }
   }
 

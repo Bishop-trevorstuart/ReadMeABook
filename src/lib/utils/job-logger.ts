@@ -1,96 +1,65 @@
 /**
- * Component: Job Logger Utility
+ * Component: Job Logger Utility (Backward Compatibility)
  * Documentation: documentation/backend/services/jobs.md
  *
- * Provides structured logging for job processors with database persistence
+ * @deprecated Use RMABLogger.forJob() directly for new code.
+ * This file provides backward compatibility for existing processors.
+ *
+ * Migration example:
+ * ```typescript
+ * // Before (deprecated)
+ * const logger = jobId ? createJobLogger(jobId, 'Context') : null;
+ * await logger?.info('message');
+ *
+ * // After (preferred)
+ * import { RMABLogger } from './logger';
+ * const logger = RMABLogger.forJob(jobId, 'Context');
+ * logger.info('message'); // No await needed!
+ * ```
  */
 
-import { prisma } from '../db';
+import { RMABLogger, LogMetadata } from './logger';
 
 export type LogLevel = 'info' | 'warn' | 'error';
 
-export interface LogMetadata {
-  [key: string]: any;
-}
-
 /**
- * Job Logger - Logs events to both console and database
+ * @deprecated Use RMABLogger.forJob() directly
  */
 export class JobLogger {
-  private jobId: string;
-  private context: string;
+  private logger: RMABLogger;
 
   constructor(jobId: string, context: string) {
-    this.jobId = jobId;
-    this.context = context;
+    this.logger = RMABLogger.forJob(jobId, context);
   }
 
   /**
    * Log info message
+   * @deprecated Returns Promise for backward compat but is actually synchronous
    */
   async info(message: string, metadata?: LogMetadata): Promise<void> {
-    await this.log('info', message, metadata);
+    this.logger.info(message, metadata);
   }
 
   /**
    * Log warning message
+   * @deprecated Returns Promise for backward compat but is actually synchronous
    */
   async warn(message: string, metadata?: LogMetadata): Promise<void> {
-    await this.log('warn', message, metadata);
+    this.logger.warn(message, metadata);
   }
 
   /**
    * Log error message
+   * @deprecated Returns Promise for backward compat but is actually synchronous
    */
   async error(message: string, metadata?: LogMetadata): Promise<void> {
-    await this.log('error', message, metadata);
-  }
-
-  /**
-   * Internal logging method
-   */
-  private async log(level: LogLevel, message: string, metadata?: LogMetadata): Promise<void> {
-    // Log to console with timestamp (for Docker logs)
-    const timestamp = new Date().toISOString().split('T')[1].split('.')[0];
-    const consoleMessage = `[${this.context}] ${message}`;
-
-    switch (level) {
-      case 'info':
-        console.log(consoleMessage);
-        break;
-      case 'warn':
-        console.warn(consoleMessage);
-        break;
-      case 'error':
-        console.error(consoleMessage);
-        break;
-    }
-
-    // Log metadata if provided
-    if (metadata && Object.keys(metadata).length > 0) {
-      console.log(timestamp, JSON.stringify(metadata, null, 2));
-    }
-
-    // Persist to database (non-blocking, ignore errors to not break job execution)
-    try {
-      await prisma.jobEvent.create({
-        data: {
-          jobId: this.jobId,
-          level,
-          context: this.context,
-          message,
-          metadata: metadata ? JSON.parse(JSON.stringify(metadata)) : null,
-        },
-      });
-    } catch (error) {
-      console.error('[JobLogger] Failed to persist log to database:', error);
-      // Don't throw - logging failure should not break job execution
-    }
+    this.logger.error(message, metadata);
   }
 }
 
 /**
  * Create a job logger instance
+ * @deprecated Use RMABLogger.forJob() directly
  */
 export function createJobLogger(jobId: string, context: string): JobLogger {
   return new JobLogger(jobId, context);

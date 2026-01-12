@@ -7,6 +7,9 @@
  */
 
 import path from 'path';
+import { RMABLogger } from './logger';
+
+const logger = RMABLogger.create('PathMapper');
 
 export interface PathMappingConfig {
   enabled: boolean;
@@ -35,7 +38,7 @@ export class PathMapper {
 
     // 2. Handle empty paths
     if (!qbittorrentPath || !config.remotePath || !config.localPath) {
-      console.warn('PathMapper: Empty path or config, returning original');
+      logger.warn('Empty path or config, returning original');
       return qbittorrentPath;
     }
 
@@ -47,8 +50,8 @@ export class PathMapper {
 
     // 4. Check if qBittorrent path starts with remote path
     if (!normalizedQbPath.startsWith(normalizedRemote)) {
-      console.warn(
-        `PathMapper: Path "${qbittorrentPath}" does not start with remote path "${config.remotePath}". ` +
+      logger.warn(
+        `Path "${qbittorrentPath}" does not start with remote path "${config.remotePath}". ` +
         `Returning original path unchanged.`
       );
       return qbittorrentPath;
@@ -60,7 +63,7 @@ export class PathMapper {
     // Join local path with relative path, ensuring proper path separators
     const transformedPath = path.join(normalizedLocal, relativePath);
 
-    console.log(`PathMapper: Transformed "${qbittorrentPath}" → "${transformedPath}"`);
+    logger.info(`Transformed "${qbittorrentPath}" to "${transformedPath}"`);
     return transformedPath;
   }
 
@@ -95,7 +98,7 @@ export class PathMapper {
 
     // Warn if paths look suspicious (but don't throw)
     if (config.remotePath === config.localPath) {
-      console.warn('PathMapper: Remote and local paths are identical - path mapping will have no effect');
+      logger.warn('Remote and local paths are identical - path mapping will have no effect');
     }
   }
 

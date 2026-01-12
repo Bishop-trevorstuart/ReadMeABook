@@ -6,6 +6,9 @@
 import { NextResponse } from 'next/server';
 import { getAuthProvider } from '@/lib/services/auth';
 import { getBaseUrl } from '@/lib/utils/url';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Auth.OIDC.Login');
 
 export async function GET() {
   try {
@@ -25,7 +28,7 @@ export async function GET() {
     // Redirect to OIDC provider
     return NextResponse.redirect(redirectUrl);
   } catch (error) {
-    console.error('[OIDC Login] Failed to initiate login:', error);
+    logger.error('Failed to initiate login', { error: error instanceof Error ? error.message : String(error) });
 
     // Redirect to login page with error
     const baseUrl = getBaseUrl();

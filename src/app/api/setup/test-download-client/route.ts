@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { QBittorrentService } from '@/lib/integrations/qbittorrent.service';
 import { SABnzbdService } from '@/lib/integrations/sabnzbd.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Setup.TestDownloadClient');
 
 export async function POST(request: NextRequest) {
   try {
@@ -80,7 +83,7 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   } catch (error) {
-    console.error('[Setup] Download client test failed:', error);
+    logger.error('Download client test failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         success: false,

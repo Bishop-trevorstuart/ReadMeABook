@@ -5,6 +5,10 @@
 
 import axios, { AxiosInstance } from 'axios';
 import * as cheerio from 'cheerio';
+import { RMABLogger } from '../utils/logger';
+
+// Module-level logger
+const logger = RMABLogger.create('Audible');
 
 export interface AudibleAudiobook {
   asin: string;
@@ -48,14 +52,14 @@ export class AudibleService {
    */
   async getPopularAudiobooks(limit: number = 20): Promise<AudibleAudiobook[]> {
     try {
-      console.log(`[Audible] Fetching popular audiobooks (limit: ${limit})...`);
+      logger.info(` Fetching popular audiobooks (limit: ${limit})...`);
 
       const audiobooks: AudibleAudiobook[] = [];
       let page = 1;
       const maxPages = Math.ceil(limit / 20); // Audible shows ~20 items per page
 
       while (audiobooks.length < limit && page <= maxPages) {
-        console.log(`[Audible] Fetching page ${page}/${maxPages}...`);
+        logger.info(` Fetching page ${page}/${maxPages}...`);
 
         const response = await this.client.get('/adblbestsellers', {
           params: page > 1 ? { page } : {},
@@ -105,11 +109,11 @@ export class AudibleService {
           foundOnPage++;
         });
 
-        console.log(`[Audible] Found ${foundOnPage} audiobooks on page ${page}`);
+        logger.info(` Found ${foundOnPage} audiobooks on page ${page}`);
 
         // If we got fewer than expected, probably no more pages
         if (foundOnPage < 10) {
-          console.log(`[Audible] Reached end of available pages`);
+          logger.info(` Reached end of available pages`);
           break;
         }
 
@@ -121,10 +125,10 @@ export class AudibleService {
         }
       }
 
-      console.log(`[Audible] Found ${audiobooks.length} popular audiobooks across ${page} pages`);
+      logger.info(` Found ${audiobooks.length} popular audiobooks across ${page} pages`);
       return audiobooks;
     } catch (error) {
-      console.error('[Audible] Failed to fetch popular audiobooks:', error);
+      logger.error('Failed to fetch popular audiobooks', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -134,14 +138,14 @@ export class AudibleService {
    */
   async getNewReleases(limit: number = 20): Promise<AudibleAudiobook[]> {
     try {
-      console.log(`[Audible] Fetching new releases (limit: ${limit})...`);
+      logger.info(` Fetching new releases (limit: ${limit})...`);
 
       const audiobooks: AudibleAudiobook[] = [];
       let page = 1;
       const maxPages = Math.ceil(limit / 20); // Audible shows ~20 items per page
 
       while (audiobooks.length < limit && page <= maxPages) {
-        console.log(`[Audible] Fetching page ${page}/${maxPages}...`);
+        logger.info(` Fetching page ${page}/${maxPages}...`);
 
         const response = await this.client.get('/newreleases', {
           params: page > 1 ? { page } : {},
@@ -190,11 +194,11 @@ export class AudibleService {
           foundOnPage++;
         });
 
-        console.log(`[Audible] Found ${foundOnPage} audiobooks on page ${page}`);
+        logger.info(` Found ${foundOnPage} audiobooks on page ${page}`);
 
         // If we got fewer than expected, probably no more pages
         if (foundOnPage < 10) {
-          console.log(`[Audible] Reached end of available pages`);
+          logger.info(` Reached end of available pages`);
           break;
         }
 
@@ -206,10 +210,10 @@ export class AudibleService {
         }
       }
 
-      console.log(`[Audible] Found ${audiobooks.length} new releases across ${page} pages`);
+      logger.info(` Found ${audiobooks.length} new releases across ${page} pages`);
       return audiobooks;
     } catch (error) {
-      console.error('[Audible] Failed to fetch new releases:', error);
+      logger.error('Failed to fetch new releases', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -219,7 +223,7 @@ export class AudibleService {
    */
   async search(query: string, page: number = 1): Promise<AudibleSearchResult> {
     try {
-      console.log(`[Audible] Searching for "${query}"...`);
+      logger.info(` Searching for "${query}"...`);
 
       const response = await this.client.get('/search', {
         params: {
@@ -285,7 +289,7 @@ export class AudibleService {
       const resultsText = $('.resultsInfo').text().trim();
       const totalResults = parseInt(resultsText.match(/of ([\d,]+)/)?.[1]?.replace(/,/g, '') || '0');
 
-      console.log(`[Audible] Found ${audiobooks.length} results for "${query}"`);
+      logger.info(` Found ${audiobooks.length} results for "${query}"`);
 
       return {
         query,
@@ -295,7 +299,7 @@ export class AudibleService {
         hasMore: audiobooks.length > 0 && totalResults > page * 20,
       };
     } catch (error) {
-      console.error('[Audible] Search failed:', error);
+      logger.error('Search failed', { error: error instanceof Error ? error.message : String(error) });
       return {
         query,
         results: [],
@@ -313,21 +317,21 @@ export class AudibleService {
    */
   async getAudiobookDetails(asin: string): Promise<AudibleAudiobook | null> {
     try {
-      console.log(`[Audible] Fetching details for ASIN ${asin}...`);
+      logger.info(` Fetching details for ASIN ${asin}...`);
 
       // Try Audnexus first (more reliable)
       const audnexusData = await this.fetchFromAudnexus(asin);
       if (audnexusData) {
-        console.log(`[Audible] Successfully fetched from Audnexus for "${audnexusData.title}"`);
+        logger.info(` Successfully fetched from Audnexus for "${audnexusData.title}"`);
         return audnexusData;
       }
 
-      console.log(`[Audible] Audnexus failed, falling back to Audible scraping...`);
+      logger.info(` Audnexus failed, falling back to Audible scraping...`);
 
       // Fallback to Audible scraping
       return await this.scrapeAudibleDetails(asin);
     } catch (error) {
-      console.error(`[Audible] Failed to fetch details for ${asin}:`, error);
+      logger.error(`Failed to fetch details for ${asin}`, { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -337,7 +341,7 @@ export class AudibleService {
    */
   private async fetchFromAudnexus(asin: string): Promise<AudibleAudiobook | null> {
     try {
-      console.log(`[Audnexus] Fetching ASIN ${asin}...`);
+      logger.debug(`Fetching ASIN from Audnexus: ${asin}`);
 
       const response = await axios.get(`https://api.audnex.us/books/${asin}`, {
         timeout: 10000,
@@ -367,22 +371,22 @@ export class AudibleService {
         result.coverArtUrl = result.coverArtUrl.replace(/\._.*_\./, '._SL500_.');
       }
 
-      console.log(`[Audnexus] Success:`, JSON.stringify({
+      logger.debug('Audnexus success', {
         title: result.title,
         author: result.author,
         narrator: result.narrator,
         descLength: result.description?.length || 0,
         duration: result.durationMinutes,
         rating: result.rating,
-        genres: result.genres?.length || 0
-      }));
+        genreCount: result.genres?.length || 0
+      });
 
       return result;
     } catch (error: any) {
       if (error.response?.status === 404) {
-        console.log(`[Audnexus] Book not found (404) for ASIN ${asin}`);
+        logger.debug(`Book not found (404) on Audnexus for ASIN ${asin}`);
       } else {
-        console.log(`[Audnexus] Error fetching ASIN ${asin}:`, error.message);
+        logger.warn(`Error fetching from Audnexus for ASIN ${asin}`, { error: error.message });
       }
       return null;
     }
@@ -413,20 +417,20 @@ export class AudibleService {
         const path = require('path');
         const debugPath = path.join('/tmp', `audible-${asin}.html`);
         fs.writeFileSync(debugPath, response.data);
-        console.log(`[Audible] Saved HTML to ${debugPath} for debugging`);
+        logger.info(` Saved HTML to ${debugPath} for debugging`);
       }
 
       // Try to extract JSON-LD structured data first
       const jsonLdScripts = $('script[type="application/ld+json"]');
-      console.log(`[Audible] Found ${jsonLdScripts.length} JSON-LD script tags`);
+      logger.info(` Found ${jsonLdScripts.length} JSON-LD script tags`);
 
       jsonLdScripts.each((i, elem) => {
         try {
           const jsonData = JSON.parse($(elem).html() || '{}');
-          console.log(`[Audible] JSON-LD ${i} type:`, jsonData['@type']);
+          logger.info(` JSON-LD ${i} type:`, jsonData['@type']);
 
           if (jsonData['@type'] === 'Book' || jsonData['@type'] === 'Audiobook' || jsonData['@type'] === 'Product') {
-            console.log('[Audible] Found valid JSON-LD structured data');
+            logger.debug('Found valid JSON-LD structured data');
 
             if (jsonData.name) result.title = jsonData.name;
 
@@ -455,7 +459,7 @@ export class AudibleService {
             }
           }
         } catch (e) {
-          console.log(`[Audible] JSON-LD ${i} parsing failed:`, e);
+          logger.debug(`JSON-LD ${i} parsing failed`, { error: e instanceof Error ? e.message : String(e) });
         }
       });
 
@@ -466,7 +470,7 @@ export class AudibleService {
                       $('h1[class*="heading"]').first().text().trim() ||
                       $('.bc-container h1').first().text().trim() ||
                       $('h1').first().text().trim();
-        console.log(`[Audible] Title from HTML: "${result.title}"`);
+        logger.info(` Title from HTML: "${result.title}"`);
       }
 
       // Author - try multiple approaches (only in product details area)
@@ -502,7 +506,7 @@ export class AudibleService {
         }
 
         result.author = result.author.replace(/^By:\s*/i, '').replace(/^Written by:\s*/i, '').trim();
-        console.log(`[Audible] Author from HTML: "${result.author}"`);
+        logger.info(` Author from HTML: "${result.author}"`);
       }
 
       // Narrator - try multiple approaches (only in product details area)
@@ -538,7 +542,7 @@ export class AudibleService {
         if (result.narrator) {
           result.narrator = result.narrator.replace(/^Narrated by:\s*/i, '').trim();
         }
-        console.log(`[Audible] Narrator from HTML: "${result.narrator || ''}"`);
+        logger.info(` Narrator from HTML: "${result.narrator || ''}"`);
       }
 
       // Description - try multiple approaches with strict filtering
@@ -588,7 +592,7 @@ export class AudibleService {
           });
         }
 
-        console.log(`[Audible] Description length: ${result.description?.length || 0} chars`);
+        logger.info(` Description length: ${result.description?.length || 0} chars`);
       }
 
       // Cover art - try multiple selectors
@@ -627,7 +631,7 @@ export class AudibleService {
           })();
 
         result.durationMinutes = this.parseRuntime(runtimeText);
-        console.log(`[Audible] Duration from "${runtimeText}": ${result.durationMinutes} minutes`);
+        logger.info(` Duration from "${runtimeText}": ${result.durationMinutes} minutes`);
       }
 
       // Rating - try multiple approaches
@@ -653,7 +657,7 @@ export class AudibleService {
           const ratingMatch = ratingText.match(/(\d+\.?\d*)\s*out of/i);
           result.rating = ratingMatch ? parseFloat(ratingMatch[1]) : undefined;
         }
-        console.log(`[Audible] Rating from "${ratingText}": ${result.rating}`);
+        logger.info(` Rating from "${ratingText}": ${result.rating}`);
       }
 
       // Release date - try multiple selectors
@@ -668,7 +672,7 @@ export class AudibleService {
         if (dateMatch) {
           result.releaseDate = dateMatch[1].trim();
         }
-        console.log(`[Audible] Release date from "${releaseDateText}": ${result.releaseDate}`);
+        logger.info(` Release date from "${releaseDateText}": ${result.releaseDate}`);
       }
 
       // Genres - try to extract categories
@@ -681,23 +685,23 @@ export class AudibleService {
       });
       if (genres.length > 0) {
         result.genres = genres.slice(0, 5); // Limit to 5 genres
-        console.log(`[Audible] Genres: ${result.genres.join(', ')}`);
+        logger.info(` Genres: ${result.genres.join(', ')}`);
       }
 
-      console.log(`[Audible] Successfully fetched details for "${result.title}"`);
-      console.log(`[Audible] Final result:`, JSON.stringify({
+      logger.info(`Successfully fetched details for "${result.title}"`);
+      logger.debug('Final result', {
         title: result.title,
         author: result.author,
         narrator: result.narrator,
         descLength: result.description?.length || 0,
         duration: result.durationMinutes,
         rating: result.rating,
-        genres: result.genres?.length || 0
-      }));
+        genreCount: result.genres?.length || 0
+      });
 
       return result;
     } catch (error) {
-      console.error(`[Audible] Failed to fetch details for ${asin}:`, error);
+      logger.error(`Failed to fetch details for ${asin}`, { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }

@@ -10,7 +10,7 @@ import { ScanPlexPayload } from '../services/job-queue.service';
 import { prisma } from '../db';
 import { getLibraryService } from '../services/library';
 import { getConfigService } from '../services/config.service';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 
 /**
  * Process library scan job
@@ -19,9 +19,9 @@ import { createJobLogger } from '../utils/job-logger';
 export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
   const { libraryId, partial, path, jobId } = payload;
 
-  const logger = jobId ? createJobLogger(jobId, 'ScanLibrary') : null;
+  const logger = RMABLogger.forJob(jobId, 'ScanLibrary');
 
-  await logger?.info(`Scanning library ${libraryId || 'default'}${partial ? ' (partial)' : ''}`);
+  logger.info(`Scanning library ${libraryId || 'default'}${partial ? ' (partial)' : ''}`);
 
   try {
     // 1. Get library service (automatically selects Plex or Audiobookshelf based on config)
@@ -29,7 +29,7 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
     const configService = getConfigService();
     const backendMode = await configService.getBackendMode();
 
-    await logger?.info(`Backend mode: ${backendMode}`);
+    logger.info(`Backend mode: ${backendMode}`);
 
     // 2. Get configured library ID
     let targetLibraryId = libraryId;
@@ -50,12 +50,12 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
       }
     }
 
-    await logger?.info(`Fetching content from library ${targetLibraryId}`);
+    logger.info(`Fetching content from library ${targetLibraryId}`);
 
     // 3. Get all audiobooks from library using abstraction layer
     const libraryItems = await libraryService.getLibraryItems(targetLibraryId);
 
-    await logger?.info(`Found ${libraryItems.length} items in library`);
+    logger.info(`Found ${libraryItems.length} items in library`);
 
     let newCount = 0;
     let updatedCount = 0;
@@ -120,7 +120,7 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
           });
 
           newCount++;
-          await logger?.info(`Added new: "${item.title}" by ${item.author}`);
+          logger.info(`Added new: "${item.title}" by ${item.author}`);
 
           results.push({
             id: newLibraryItem.id,
@@ -130,16 +130,16 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
           });
         }
       } catch (error) {
-        await logger?.error(`Failed to process "${item.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+        logger.error(`Failed to process "${item.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
         skippedCount++;
       }
     }
 
-    await logger?.info(`Scan complete: ${libraryItems.length} items scanned, ${newCount} new, ${updatedCount} updated, ${skippedCount} skipped`);
+    logger.info(`Scan complete: ${libraryItems.length} items scanned, ${newCount} new, ${updatedCount} updated, ${skippedCount} skipped`);
 
     // 5. Remove stale records from plex_library (items no longer in the actual library)
     // This ensures the database is a fresh snapshot of the library state
-    await logger?.info(`Checking for stale library records...`);
+    logger.info(`Checking for stale library records...`);
 
     const scannedPlexGuids = libraryItems
       .filter(item => item.externalId)
@@ -163,7 +163,7 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
       });
 
       if (staleLibraryItems.length > 0) {
-      await logger?.info(`Found ${staleLibraryItems.length} stale library records to remove`);
+      logger.info(`Found ${staleLibraryItems.length} stale library records to remove`);
 
       // For each stale library item, clean up references
       for (const staleItem of staleLibraryItems) {
@@ -214,7 +214,7 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
               }
             }
 
-            await logger?.info(`Reset audiobook "${staleItem.title}" (no longer in library)`);
+            logger.info(`Reset audiobook "${staleItem.title}" (no longer in library)`);
           }
 
           // Delete the stale library record
@@ -224,21 +224,21 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
 
           staleRemovedCount++;
         } catch (error) {
-          await logger?.error(`Failed to remove stale library item "${staleItem.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+          logger.error(`Failed to remove stale library item "${staleItem.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
 
-        await logger?.info(`Removed ${staleRemovedCount} stale records, reset ${audiobooksReset} audiobooks and ${requestsReset} requests`);
+        logger.info(`Removed ${staleRemovedCount} stale records, reset ${audiobooksReset} audiobooks and ${requestsReset} requests`);
       } else {
-        await logger?.info(`No stale library records found`);
+        logger.info(`No stale library records found`);
       }
     } else {
-      await logger?.warn(`Scan returned no items - skipping stale record cleanup to prevent data loss`);
+      logger.warn(`Scan returned no items - skipping stale record cleanup to prevent data loss`);
     }
 
     // 5b. Clean up orphaned audiobooks (audiobooks with plexGuid/absItemId that don't exist in plex_library)
     // This handles cases where the library record was already deleted but audiobook record wasn't updated
-    await logger?.info(`Checking for orphaned audiobooks...`);
+    logger.info(`Checking for orphaned audiobooks...`);
 
     const allPlexGuidsInLibrary = await prisma.plexLibrary.findMany({
       select: { plexGuid: true },
@@ -277,7 +277,7 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
 
       // This audiobook is orphaned - its library link points to nothing
       try {
-        await logger?.info(`Found orphaned audiobook: "${audiobook.title}" (linked to non-existent library item)`);
+        logger.info(`Found orphaned audiobook: "${audiobook.title}" (linked to non-existent library item)`);
 
         // Clear library linkage
         await prisma.audiobook.update({
@@ -306,18 +306,18 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
           }
         }
       } catch (error) {
-        await logger?.error(`Failed to reset orphaned audiobook "${audiobook.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
+        logger.error(`Failed to reset orphaned audiobook "${audiobook.title}": ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
     if (orphanedAudiobooksReset > 0) {
-      await logger?.info(`Reset ${orphanedAudiobooksReset} orphaned audiobooks and ${orphanedRequestsReset} requests`);
+      logger.info(`Reset ${orphanedAudiobooksReset} orphaned audiobooks and ${orphanedRequestsReset} requests`);
     } else {
-      await logger?.info(`No orphaned audiobooks found`);
+      logger.info(`No orphaned audiobooks found`);
     }
 
     // 6. Match downloaded requests against library
-    await logger?.info(`Checking for downloaded requests to match...`);
+    logger.info(`Checking for downloaded requests to match...`);
     const downloadedRequests = await prisma.request.findMany({
       where: {
         status: 'downloaded',
@@ -327,7 +327,7 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
       take: 50, // Limit to prevent overwhelming
     });
 
-    await logger?.info(`Found ${downloadedRequests.length} downloaded requests to match`);
+    logger.info(`Found ${downloadedRequests.length} downloaded requests to match`);
 
     let matchedCount = 0;
     const { findPlexMatch } = await import('../utils/audiobook-matcher');
@@ -346,7 +346,7 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
         });
 
         if (match) {
-          await logger?.info(`Match found! "${audiobook.title}" -> "${match.title}"`);
+          logger.info(`Match found! "${audiobook.title}" -> "${match.title}"`);
 
           // Update audiobook with matched library item ID (plexGuid or abs_item_id)
           const updateData: any = { updatedAt: new Date() };
@@ -379,17 +379,17 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
             const itemId = match.plexGuid; // plexGuid contains the Audiobookshelf item ID
             const asin = audiobook.audibleAsin || undefined;
             const matchInfo = asin ? ` with ASIN ${asin}` : '';
-            await logger?.info(`Triggering metadata match for matched item: ${itemId}${matchInfo}`);
+            logger.info(`Triggering metadata match for matched item: ${itemId}${matchInfo}`);
             const { triggerABSItemMatch } = await import('../services/audiobookshelf/api');
             await triggerABSItemMatch(itemId, asin);
           }
         }
       } catch (error) {
-        await logger?.error(`Failed to match request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        logger.error(`Failed to match request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
-    await logger?.info(`Matched ${matchedCount}/${downloadedRequests.length} downloaded requests`, {
+    logger.info(`Matched ${matchedCount}/${downloadedRequests.length} downloaded requests`, {
       totalScanned: libraryItems.length,
       newCount,
       updatedCount,
@@ -420,7 +420,7 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
       matchedDownloads: matchedCount,
     };
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     throw error;
   }
 }

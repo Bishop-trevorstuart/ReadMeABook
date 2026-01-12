@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { PathMapper } from '@/lib/utils/path-mapper';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.DownloadClient');
 
 export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -135,7 +138,7 @@ export async function PUT(request: NextRequest) {
           create: { key: 'download_client_local_path', value: localPath || '' },
         });
 
-        console.log('[Admin] Download client settings updated');
+        logger.info('Download client settings updated');
 
         // Invalidate download client service singleton to force reload of credentials and URL
         if (type === 'qbittorrent') {
@@ -151,7 +154,7 @@ export async function PUT(request: NextRequest) {
           message: 'Download client settings updated successfully',
         });
       } catch (error) {
-        console.error('[Admin] Failed to update download client settings:', error);
+        logger.error('Failed to update download client settings', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

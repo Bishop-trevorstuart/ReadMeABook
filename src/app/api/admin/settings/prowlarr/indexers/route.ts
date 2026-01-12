@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { getProwlarrService } from '@/lib/integrations/prowlarr.service';
 import { getConfigService } from '@/lib/services/config.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.ProwlarrIndexers');
 
 interface SavedIndexerConfig {
   id: number;
@@ -65,7 +68,7 @@ export async function GET(request: NextRequest) {
           flagConfigs,
         });
       } catch (error) {
-        console.error('[Prowlarr] Failed to fetch indexers:', error);
+        logger.error('Failed to fetch indexers', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,
@@ -128,7 +131,7 @@ export async function PUT(request: NextRequest) {
           message: 'Indexer configuration saved',
         });
       } catch (error) {
-        console.error('[Prowlarr] Failed to save indexer config:', error);
+        logger.error('Failed to save indexer config', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

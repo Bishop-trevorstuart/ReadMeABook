@@ -12,6 +12,9 @@ import {
 } from './ILibraryService';
 import { getPlexService } from '@/lib/integrations/plex.service';
 import { getConfigService } from '@/lib/services/config.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('PlexLibrary');
 
 export class PlexLibraryService implements ILibraryService {
   private plexService = getPlexService();
@@ -175,7 +178,7 @@ export class PlexLibraryService implements ILibraryService {
       // This is a simplified implementation
       return null;
     } catch (error) {
-      console.error('[PlexLibraryService] Failed to get item:', error);
+      logger.error('Failed to get item', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }

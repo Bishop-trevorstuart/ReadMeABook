@@ -7,6 +7,9 @@ import Queue, { Job as BullJob, JobOptions } from 'bull';
 import Redis from 'ioredis';
 import { prisma } from '../db';
 import { TorrentResult } from '../utils/ranking-algorithm';
+import { RMABLogger } from '../utils/logger';
+
+const logger = RMABLogger.create('JobQueue');
 
 export type JobType =
   | 'search_indexers'
@@ -151,12 +154,12 @@ export class JobQueueService {
    */
   private setupEventHandlers(): void {
     this.queue.on('completed', async (job: BullJob, result: any) => {
-      console.log(`Job ${job.id} completed:`, result);
+      logger.info(`Job ${job.id} completed`, { result });
       await this.updateJobInDatabase(job.id as string, 'completed', result);
     });
 
     this.queue.on('failed', async (job: BullJob, error: Error) => {
-      console.error(`Job ${job.id} failed:`, error.message);
+      logger.error(`Job ${job.id} failed`, { error: error.message });
       await this.updateJobInDatabase(
         job.id as string,
         'failed',
@@ -168,7 +171,7 @@ export class JobQueueService {
       // Handle permanent failures for specific job types after all retries exhausted
       if (job.name === 'monitor_download' && job.data) {
         const payload = job.data as MonitorDownloadPayload;
-        console.error(`[MonitorDownload] Job permanently failed for request ${payload.requestId} after ${job.attemptsMade} attempts`);
+        logger.error(`MonitorDownload job permanently failed for request ${payload.requestId} after ${job.attemptsMade} attempts`);
 
         // Update request status to failed (only happens after all retries exhausted)
         try {
@@ -192,13 +195,13 @@ export class JobQueueService {
             });
           }
         } catch (updateError) {
-          console.error('[MonitorDownload] Failed to update request/download status:', updateError);
+          logger.error('Failed to update request/download status', { error: updateError instanceof Error ? updateError.message : String(updateError) });
         }
       }
     });
 
     this.queue.on('stalled', async (job: BullJob) => {
-      console.warn(`Job ${job.id} stalled`);
+      logger.warn(`Job ${job.id} stalled`);
       await this.updateJobInDatabase(job.id as string, 'stuck');
     });
 
@@ -207,7 +210,7 @@ export class JobQueueService {
     });
 
     this.queue.on('error', (error: Error) => {
-      console.error('Queue error:', error);
+      logger.error('Queue error', { error: error.message });
     });
   }
 
@@ -322,7 +325,7 @@ export class JobQueueService {
           where: { id: payload.scheduledJobId },
           data: { lastRun: new Date() },
         }).catch(err => {
-          console.error(`[JobQueue] Failed to update lastRun for scheduled job ${payload.scheduledJobId}:`, err);
+          logger.error(`Failed to update lastRun for scheduled job ${payload.scheduledJobId}`, { error: err instanceof Error ? err.message : String(err) });
         });
       }
       return { ...payload, jobId: existingJob.id };
@@ -347,7 +350,7 @@ export class JobQueueService {
         where: { id: payload.scheduledJobId },
         data: { lastRun: new Date() },
       }).catch(err => {
-        console.error(`[JobQueue] Failed to update lastRun for scheduled job ${payload.scheduledJobId}:`, err);
+        logger.error(`Failed to update lastRun for scheduled job ${payload.scheduledJobId}`, { error: err instanceof Error ? err.message : String(err) });
       });
     }
 
@@ -395,7 +398,7 @@ export class JobQueueService {
         data: updateData,
       });
     } catch (error) {
-      console.error('Failed to update job in database:', error);
+      logger.error('Failed to update job in database', { error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -801,7 +804,7 @@ export class JobQueueService {
       },
       jobId,
     });
-    console.log(`[JobQueue] Added repeatable job: ${jobType} with cron ${cronExpression}`);
+    logger.info(`Added repeatable job: ${jobType} with cron ${cronExpression}`);
   }
 
   /**
@@ -816,7 +819,7 @@ export class JobQueueService {
       cron: cronExpression,
       jobId,
     });
-    console.log(`[JobQueue] Removed repeatable job: ${jobType}`);
+    logger.info(`Removed repeatable job: ${jobType}`);
   }
 
   /**
@@ -840,7 +843,7 @@ export function getJobQueueService(): JobQueueService {
 // Graceful shutdown
 process.on('SIGTERM', async () => {
   if (jobQueueService) {
-    console.log('Closing job queue...');
+    logger.info('Closing job queue...');
     await jobQueueService.close();
   }
 });

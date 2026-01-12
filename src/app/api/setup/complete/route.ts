@@ -9,6 +9,9 @@ import bcrypt from 'bcrypt';
 import { generateAccessToken, generateRefreshToken } from '@/lib/utils/jwt';
 import { getEncryptionService } from '@/lib/services/encryption.service';
 import { getPlexService } from '@/lib/integrations/plex.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Setup.Complete');
 
 export async function POST(request: NextRequest) {
   try {
@@ -172,12 +175,12 @@ export async function POST(request: NextRequest) {
           const serverInfo = await plexService.testConnection(plex.url, plex.token);
           if (serverInfo.success && serverInfo.info?.machineIdentifier) {
             machineIdentifier = serverInfo.info.machineIdentifier;
-            console.log('[Setup] Fetched machineIdentifier:', machineIdentifier);
+            logger.debug('Fetched machineIdentifier', { machineIdentifier });
           } else {
-            console.warn('[Setup] Could not fetch machineIdentifier');
+            logger.warn('Could not fetch machineIdentifier');
           }
         } catch (error) {
-          console.error('[Setup] Error fetching machineIdentifier:', error);
+          logger.error('Error fetching machineIdentifier', { error: error instanceof Error ? error.message : String(error) });
         }
       }
 
@@ -441,7 +444,7 @@ export async function POST(request: NextRequest) {
     // BookDate configuration (optional, global for all users)
     // Note: libraryScope and customPrompt are now per-user settings, not required here
     if (bookdate && bookdate.provider && bookdate.apiKey && bookdate.model) {
-      console.log('[Setup] Saving global BookDate configuration');
+      logger.info('Saving global BookDate configuration');
 
       const encryptionService = getEncryptionService();
       const encryptedApiKey = encryptionService.encrypt(bookdate.apiKey);
@@ -478,9 +481,9 @@ export async function POST(request: NextRequest) {
         });
       }
 
-      console.log('[Setup] Global BookDate configuration saved');
+      logger.debug('Global BookDate configuration saved');
     } else {
-      console.log('[Setup] BookDate configuration skipped (missing provider, apiKey, or model)');
+      logger.debug('BookDate configuration skipped (missing provider, apiKey, or model)');
     }
 
     // Mark setup as complete
@@ -502,9 +505,9 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log('[Setup] Auto jobs enabled');
+    logger.debug('Auto jobs enabled');
 
-    console.log('[Setup] Configuration saved successfully');
+    logger.info('Configuration saved successfully');
 
     // Return response with tokens if admin user was created
     if (adminUser && accessToken && refreshToken) {
@@ -530,7 +533,7 @@ export async function POST(request: NextRequest) {
       });
     }
   } catch (error) {
-    console.error('[Setup] Failed to save configuration:', error);
+    logger.error('Failed to save configuration', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         success: false,

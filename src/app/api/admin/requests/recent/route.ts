@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Requests.Recent');
 
 export async function GET(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -61,7 +64,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json({ requests: formatted });
       } catch (error) {
-        console.error('[Admin] Failed to fetch recent requests:', error);
+        logger.error('Failed to fetch recent requests', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to fetch recent requests' },
           { status: 500 }

@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { getPlexService } from '@/lib/integrations/plex.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.PlexLibraries');
 
 /**
  * GET /api/admin/settings/plex/libraries
@@ -51,7 +54,7 @@ export async function GET(request: NextRequest) {
           })),
         });
       } catch (error) {
-        console.error('[Plex] Failed to fetch libraries:', error);
+        logger.error('Failed to fetch libraries', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

@@ -8,6 +8,9 @@ import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { getJobQueueService } from '@/lib/services/job-queue.service';
 import { TorrentResult } from '@/lib/utils/ranking-algorithm';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.SelectTorrent');
 
 /**
  * POST /api/requests/[id]/select-torrent
@@ -59,7 +62,7 @@ export async function POST(
         );
       }
 
-      console.log(`[SelectTorrent] User selected torrent: ${torrent.title} for request ${id}`);
+      logger.info(`User selected torrent: ${torrent.title}`, { requestId: id });
 
       // Trigger download job with the selected torrent
       const jobQueue = getJobQueueService();
@@ -93,7 +96,7 @@ export async function POST(
         message: 'Torrent download initiated',
       });
     } catch (error) {
-      console.error('Failed to select torrent:', error);
+      logger.error('Failed to select torrent', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json(
         {
           error: 'DownloadError',

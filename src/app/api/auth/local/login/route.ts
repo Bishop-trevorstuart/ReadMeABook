@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { LocalAuthProvider } from '@/lib/services/auth/LocalAuthProvider';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Auth.LocalLogin');
 
 export async function POST(request: NextRequest) {
   try {
@@ -25,30 +28,30 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    console.log('[LocalLogin] Attempting login for username:', username);
+    logger.info('Attempting login', { username });
 
     const provider = new LocalAuthProvider();
     const result = await provider.handleCallback({ username, password });
 
     if (!result.success) {
       if (result.requiresApproval) {
-        console.log('[LocalLogin] Account pending approval:', username);
+        logger.info('Account pending approval', { username });
         return NextResponse.json({
           success: false,
           pendingApproval: true,
           message: 'Account pending admin approval.',
         });
       }
-      console.error('[LocalLogin] Login failed:', result.error);
+      logger.error('Login failed', { error: result.error });
       return NextResponse.json(
         { error: result.error },
         { status: 401 }
       );
     }
 
-    console.log('[LocalLogin] Login successful for:', username);
-    console.log('[LocalLogin] User data:', result.user);
-    console.log('[LocalLogin] Token generated successfully');
+    logger.info('Login successful', { username });
+    logger.debug('User data', { user: result.user });
+    logger.debug('Token generated successfully');
 
     // Return tokens for login
     return NextResponse.json({
@@ -58,7 +61,7 @@ export async function POST(request: NextRequest) {
       refreshToken: result.tokens!.refreshToken,
     });
   } catch (error) {
-    console.error('[LocalLogin] Error:', error);
+    logger.error('Error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Login failed' },
       { status: 500 }

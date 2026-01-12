@@ -17,6 +17,9 @@ import { getEncryptionService } from '@/lib/services/encryption.service';
 import { generateAccessToken, generateRefreshToken } from '@/lib/utils/jwt';
 import { getBaseUrl } from '@/lib/utils/url';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('PlexAuth');
 
 export class PlexAuthProvider implements IAuthProvider {
   type: 'plex' = 'plex';
@@ -43,7 +46,7 @@ export class PlexAuthProvider implements IAuthProvider {
         pinId: pin.id.toString(),
       };
     } catch (error) {
-      console.error('[PlexAuthProvider] Failed to initiate login:', error);
+      logger.error('Failed to initiate login', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to initiate Plex authentication');
     }
   }
@@ -137,7 +140,7 @@ export class PlexAuthProvider implements IAuthProvider {
         tokens,
       };
     } catch (error) {
-      console.error('[PlexAuthProvider] Callback failed:', error);
+      logger.error('Callback failed', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         error: error instanceof Error ? error.message : 'Authentication failed',
@@ -184,7 +187,7 @@ export class PlexAuthProvider implements IAuthProvider {
         decryptedToken
       );
     } catch (error) {
-      console.error('[PlexAuthProvider] Access validation failed:', error);
+      logger.error('Access validation failed', { error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }

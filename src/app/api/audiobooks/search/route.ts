@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getAudibleService } from '@/lib/integrations/audible.service';
 import { enrichAudiobooksWithMatches } from '@/lib/utils/audiobook-matcher';
 import { getCurrentUser } from '@/lib/middleware/auth';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Audiobooks.Search');
 
 /**
  * GET /api/audiobooks/search?q=query&page=1
@@ -47,7 +50,7 @@ export async function GET(request: NextRequest) {
       hasMore: results.hasMore,
     });
   } catch (error) {
-    console.error('Failed to search audiobooks:', error);
+    logger.error('Failed to search audiobooks', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'SearchError',

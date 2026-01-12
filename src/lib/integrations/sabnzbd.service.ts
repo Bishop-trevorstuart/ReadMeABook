@@ -5,6 +5,9 @@
 
 import axios, { AxiosInstance } from 'axios';
 import https from 'https';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('SABnzbd');
 
 export interface AddNZBOptions {
   category?: string;
@@ -238,7 +241,7 @@ export class SABnzbdService {
       const categoryExists = config.categories.some(cat => cat.name === this.defaultCategory);
 
       if (!categoryExists) {
-        console.log(`[SABnzbd] Creating category: ${this.defaultCategory}`);
+        logger.info(`Creating category: ${this.defaultCategory}`);
 
         // Create category
         await this.client.get('/api', {
@@ -252,12 +255,12 @@ export class SABnzbdService {
           },
         });
 
-        console.log(`[SABnzbd] Category created successfully: ${this.defaultCategory}`);
+        logger.info(`Category created successfully: ${this.defaultCategory}`);
       } else {
-        console.log(`[SABnzbd] Category already exists: ${this.defaultCategory}`);
+        logger.info(`Category already exists: ${this.defaultCategory}`);
       }
     } catch (error) {
-      console.error('[SABnzbd] Failed to ensure category:', error);
+      logger.error('Failed to ensure category', { error: error instanceof Error ? error.message : String(error) });
       // Don't throw - category creation failure shouldn't block downloads
     }
   }
@@ -267,7 +270,7 @@ export class SABnzbdService {
    * Returns the NZB ID
    */
   async addNZB(url: string, options?: AddNZBOptions): Promise<string> {
-    console.log(`[SABnzbd] Adding NZB from URL: ${url.substring(0, 150)}...`);
+    logger.info(`Adding NZB from URL: ${url.substring(0, 150)}...`);
 
     const response = await this.client.get('/api', {
       params: {
@@ -291,7 +294,7 @@ export class SABnzbdService {
     }
 
     const nzbId = nzbIds[0];
-    console.log(`[SABnzbd] Added NZB: ${nzbId}`);
+    logger.info(`Added NZB: ${nzbId}`);
 
     return nzbId;
   }
@@ -559,5 +562,5 @@ export async function getSABnzbdService(): Promise<SABnzbdService> {
 
 export function invalidateSABnzbdService(): void {
   sabnzbdServiceInstance = null;
-  console.log('[SABnzbd] Service singleton invalidated');
+  logger.info('Service singleton invalidated');
 }

@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAccessToken, TokenPayload } from '../utils/jwt';
 import { prisma } from '../db';
+import { RMABLogger } from '../utils/logger';
+
+const logger = RMABLogger.create('Auth');
 
 export interface AuthenticatedRequest extends NextRequest {
   user?: TokenPayload & { id: string };
@@ -40,7 +43,7 @@ export async function requireAuth(
   const token = extractToken(request);
 
   if (!token) {
-    console.error('[Auth Middleware] No token provided');
+    logger.error('No token provided');
     return NextResponse.json(
       {
         error: 'Unauthorized',
@@ -53,7 +56,7 @@ export async function requireAuth(
   const payload = verifyAccessToken(token);
 
   if (!payload) {
-    console.error('[Auth Middleware] Token verification failed');
+    logger.error('Token verification failed');
     return NextResponse.json(
       {
         error: 'Unauthorized',
@@ -69,7 +72,7 @@ export async function requireAuth(
   });
 
   if (!user) {
-    console.error('[Auth Middleware] User not found in database:', payload.sub);
+    logger.error('User not found in database', { userId: payload.sub });
     return NextResponse.json(
       {
         error: 'Unauthorized',

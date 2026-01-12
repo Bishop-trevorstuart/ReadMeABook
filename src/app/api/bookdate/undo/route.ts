@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.BookDate.Undo');
 
 async function handler(req: AuthenticatedRequest) {
   try {
@@ -77,7 +80,7 @@ async function handler(req: AuthenticatedRequest) {
     });
 
   } catch (error: any) {
-    console.error('[BookDate] Undo error:', error);
+    logger.error('Undo error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Failed to undo swipe' },
       { status: 500 }

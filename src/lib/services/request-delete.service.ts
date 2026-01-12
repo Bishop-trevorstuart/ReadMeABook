@@ -8,6 +8,9 @@
 import { prisma } from '../db';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import { RMABLogger } from '../utils/logger';
+
+const logger = RMABLogger.create('RequestDelete');
 
 export interface DeleteRequestResult {
   success: boolean;
@@ -111,7 +114,7 @@ export async function deleteRequest(
             torrent = await qbt.getTorrent(downloadHistory.torrentHash);
           } catch (error) {
             // Torrent not found in qBittorrent (already removed)
-            console.log(`[RequestDelete] Torrent ${downloadHistory.torrentHash} not found in qBittorrent, skipping`);
+            logger.info(`Torrent ${downloadHistory.torrentHash} not found in qBittorrent, skipping`);
           }
 
           if (torrent) {
@@ -121,14 +124,14 @@ export async function deleteRequest(
 
             if (isUnlimitedSeeding) {
               // Unlimited seeding - keep in qBittorrent, stop monitoring
-              console.log(
-                `[RequestDelete] Keeping torrent ${torrent.name} for unlimited seeding (indexer: ${downloadHistory.indexerName})`
+              logger.info(
+                `Keeping torrent ${torrent.name} for unlimited seeding (indexer: ${downloadHistory.indexerName})`
               );
               torrentsKeptUnlimited++;
             } else if (!isCompleted) {
               // Download not completed - delete immediately
-              console.log(
-                `[RequestDelete] Deleting incomplete download: ${torrent.name}`
+              logger.info(
+                `Deleting incomplete download: ${torrent.name}`
               );
               await qbt.deleteTorrent(downloadHistory.torrentHash, true);
               torrentsRemoved++;
@@ -140,8 +143,8 @@ export async function deleteRequest(
 
               if (hasMetRequirement) {
                 // Seeding requirement met - delete now
-                console.log(
-                  `[RequestDelete] Deleting torrent ${torrent.name} (seeding complete: ${Math.floor(
+                logger.info(
+                  `Deleting torrent ${torrent.name} (seeding complete: ${Math.floor(
                     actualSeedingTime / 60
                   )}/${seedingConfig.seedingTimeMinutes} minutes)`
                 );
@@ -150,8 +153,8 @@ export async function deleteRequest(
               } else {
                 // Still needs seeding - keep for cleanup job
                 const remainingMinutes = Math.ceil((seedingTimeSeconds - actualSeedingTime) / 60);
-                console.log(
-                  `[RequestDelete] Keeping torrent ${torrent.name} for ${remainingMinutes} more minutes of seeding`
+                logger.info(
+                  `Keeping torrent ${torrent.name} for ${remainingMinutes} more minutes of seeding`
                 );
                 torrentsKeptSeeding++;
               }
@@ -165,17 +168,17 @@ export async function deleteRequest(
 
             // Try to delete the NZB from SABnzbd (might already be completed/removed)
             await sabnzbd.deleteNZB(downloadHistory.nzbId, true);
-            console.log(`[RequestDelete] Deleted NZB ${downloadHistory.nzbId} from SABnzbd`);
+            logger.info(`Deleted NZB ${downloadHistory.nzbId} from SABnzbd`);
             torrentsRemoved++;
           } catch (error) {
             // NZB not found or already removed
-            console.log(`[RequestDelete] NZB ${downloadHistory.nzbId} not found in SABnzbd, skipping`);
+            logger.info(`NZB ${downloadHistory.nzbId} not found in SABnzbd, skipping`);
           }
         }
       } catch (error) {
-        console.error(
-          `[RequestDelete] Error handling download for request ${requestId}:`,
-          error instanceof Error ? error.message : 'Unknown error'
+        logger.error(
+          `Error handling download for request ${requestId}`,
+          { error: error instanceof Error ? error.message : String(error) }
         );
         // Continue with deletion even if download handling fails
       }
@@ -229,7 +232,7 @@ export async function deleteRequest(
         // Delete the title folder (not the author folder)
         await fs.rm(titleFolderPath, { recursive: true, force: true });
 
-        console.log(`[RequestDelete] Deleted media directory: ${titleFolderPath}`);
+        logger.info(`Deleted media directory: ${titleFolderPath}`);
         filesDeleted = true;
       } catch (accessError) {
         // Folder doesn't exist - try without year/ASIN (fallback for older files)
@@ -237,20 +240,20 @@ export async function deleteRequest(
         try {
           await fs.access(fallbackPath);
           await fs.rm(fallbackPath, { recursive: true, force: true });
-          console.log(`[RequestDelete] Deleted media directory (fallback path): ${fallbackPath}`);
+          logger.info(`Deleted media directory (fallback path): ${fallbackPath}`);
           filesDeleted = true;
         } catch (fallbackError) {
           // Neither path exists - that's okay
-          console.log(
-            `[RequestDelete] Media directory not found (tried: ${titleFolderPath}, ${fallbackPath})`
+          logger.info(
+            `Media directory not found (tried: ${titleFolderPath}, ${fallbackPath})`
           );
           filesDeleted = false;
         }
       }
     } catch (error) {
-      console.error(
-        `[RequestDelete] Error deleting media files for request ${requestId}:`,
-        error instanceof Error ? error.message : 'Unknown error'
+      logger.error(
+        `Error deleting media files for request ${requestId}`,
+        { error: error instanceof Error ? error.message : String(error) }
       );
       // Continue with soft delete even if file deletion fails
     }
@@ -291,18 +294,18 @@ export async function deleteRequest(
 
           await Promise.all(deletePromises);
 
-          console.log(
-            `[RequestDelete] Deleted ${exactMatches.length} plex_library record(s) for "${request.audiobook.title}"`
+          logger.info(
+            `Deleted ${exactMatches.length} plex_library record(s) for "${request.audiobook.title}"`
           );
         } else {
-          console.log(
-            `[RequestDelete] No plex_library records found for "${request.audiobook.title}"`
+          logger.info(
+            `No plex_library records found for "${request.audiobook.title}"`
           );
         }
       } catch (libError) {
-        console.error(
-          `[RequestDelete] Error deleting plex_library records:`,
-          libError instanceof Error ? libError.message : 'Unknown error'
+        logger.error(
+          `Error deleting plex_library records`,
+          { error: libError instanceof Error ? libError.message : String(libError) }
         );
         // Continue with deletion even if library cleanup fails
       }
@@ -325,13 +328,13 @@ export async function deleteRequest(
         data: updateData,
       });
 
-      console.log(
-        `[RequestDelete] Cleared availability status for audiobook ${request.audiobook.id}`
+      logger.info(
+        `Cleared availability status for audiobook ${request.audiobook.id}`
       );
     } catch (error) {
-      console.error(
-        `[RequestDelete] Error clearing audiobook status:`,
-        error instanceof Error ? error.message : 'Unknown error'
+      logger.error(
+        `Error clearing audiobook status`,
+        { error: error instanceof Error ? error.message : String(error) }
       );
       // Continue with deletion even if this fails
     }
@@ -345,8 +348,8 @@ export async function deleteRequest(
       },
     });
 
-    console.log(
-      `[RequestDelete] Request ${requestId} soft-deleted by admin ${adminUserId}`
+    logger.info(
+      `Request ${requestId} soft-deleted by admin ${adminUserId}`
     );
 
     return {
@@ -358,9 +361,9 @@ export async function deleteRequest(
       torrentsKeptUnlimited,
     };
   } catch (error) {
-    console.error(
-      `[RequestDelete] Failed to delete request ${requestId}:`,
-      error instanceof Error ? error.message : 'Unknown error'
+    logger.error(
+      `Failed to delete request ${requestId}`,
+      { error: error instanceof Error ? error.message : String(error) }
     );
 
     return {

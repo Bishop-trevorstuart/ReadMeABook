@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { LocalAuthProvider } from '@/lib/services/auth/LocalAuthProvider';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Auth.Register');
 
 // Rate limiting map (in production, use Redis)
 const registrationAttempts = new Map<string, { count: number; resetAt: number }>();
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest) {
       refreshToken: result.tokens!.refreshToken,
     });
   } catch (error) {
-    console.error('[Registration] Error:', error);
+    logger.error('Registration error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: 'Registration failed' },
       { status: 500 }

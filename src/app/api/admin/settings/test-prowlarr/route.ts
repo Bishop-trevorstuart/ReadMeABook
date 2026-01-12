@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { ProwlarrService } from '@/lib/integrations/prowlarr.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.TestProwlarr');
 
 export async function POST(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -59,7 +62,7 @@ export async function POST(request: NextRequest) {
           })),
         });
       } catch (error) {
-        console.error('[Admin Settings] Prowlarr test failed:', error);
+        logger.error('Prowlarr test failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

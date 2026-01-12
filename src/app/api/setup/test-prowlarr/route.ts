@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { ProwlarrService } from '@/lib/integrations/prowlarr.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Setup.TestProwlarr');
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +41,7 @@ export async function POST(request: NextRequest) {
       })),
     });
   } catch (error) {
-    console.error('[Setup] Prowlarr test failed:', error);
+    logger.error('Prowlarr test failed', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         success: false,

@@ -3,6 +3,10 @@
  * Documentation: documentation/frontend/routing-auth.md
  */
 
+import { RMABLogger } from './logger';
+
+const logger = RMABLogger.create('JWTClient');
+
 interface JWTPayload {
   sub: string;
   plexId: string;
@@ -27,7 +31,7 @@ export function decodeJWT(token: string): JWTPayload | null {
     const decoded = JSON.parse(atob(payload.replace(/-/g, '+').replace(/_/g, '/')));
     return decoded as JWTPayload;
   } catch (error) {
-    console.error('Failed to decode JWT:', error);
+    logger.error('Failed to decode JWT', { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }

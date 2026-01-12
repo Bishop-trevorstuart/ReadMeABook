@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getConfigService, ConfigUpdate } from '@/lib/services/config.service';
 import { z } from 'zod';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Config');
 
 const ConfigUpdateSchema = z.object({
   updates: z.array(
@@ -35,7 +38,7 @@ export async function PUT(request: NextRequest) {
       updated: updates.length,
     });
   } catch (error) {
-    console.error('Failed to update configuration:', error);
+    logger.error('Failed to update configuration', { error: error instanceof Error ? error.message : String(error) });
 
     if (error instanceof z.ZodError) {
       return NextResponse.json(
@@ -69,7 +72,7 @@ export async function GET() {
       config: allConfig,
     });
   } catch (error) {
-    console.error('Failed to get all configuration:', error);
+    logger.error('Failed to get all configuration', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'Failed to get configuration',

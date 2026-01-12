@@ -7,7 +7,7 @@ import path from 'path';
 import { MonitorDownloadPayload, getJobQueueService } from '../services/job-queue.service';
 import { prisma } from '../db';
 import { getQBittorrentService } from '../integrations/qbittorrent.service';
-import { createJobLogger, JobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 import { PathMapper } from '../utils/path-mapper';
 import { getConfigService } from '../services/config.service';
 
@@ -18,7 +18,7 @@ import { getConfigService } from '../services/config.service';
 async function getTorrentWithRetry(
   qbt: any,
   hash: string,
-  logger: JobLogger | null,
+  logger: RMABLogger,
   maxRetries: number = 3,
   initialDelayMs: number = 500
 ): Promise<any> {
@@ -37,7 +37,7 @@ async function getTorrentWithRetry(
 
       // Exponential backoff: 500ms, 1000ms, 2000ms
       const delayMs = initialDelayMs * Math.pow(2, attempt);
-      await logger?.warn(`Torrent ${hash} not found, retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`);
+      logger.warn(`Torrent ${hash} not found, retrying in ${delayMs}ms (attempt ${attempt + 1}/${maxRetries})`);
 
       await new Promise(resolve => setTimeout(resolve, delayMs));
     }
@@ -55,7 +55,7 @@ async function getTorrentWithRetry(
 export async function processMonitorDownload(payload: MonitorDownloadPayload): Promise<any> {
   const { requestId, downloadHistoryId, downloadClientId, downloadClient, jobId } = payload;
 
-  const logger = jobId ? createJobLogger(jobId, 'MonitorDownload') : null;
+  const logger = RMABLogger.forJob(jobId, 'MonitorDownload');
 
   try {
     let progress: any;
@@ -96,7 +96,7 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
       // Store download path if available (only set after completion)
       downloadPath = nzbInfo.downloadPath;
 
-      await logger?.info(`SABnzbd status: ${nzbInfo.status}`, {
+      logger.info(`SABnzbd status: ${nzbInfo.status}`, {
         progress: `${(nzbInfo.progress * 100).toFixed(1)}%`,
         speed: `${(nzbInfo.downloadSpeed / 1024 / 1024).toFixed(2)} MB/s`,
       });
@@ -123,7 +123,7 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
 
     // Check download state
     if (progress.state === 'completed') {
-      await logger?.info(`Download completed for request ${requestId}`);
+      logger.info(`Download completed for request ${requestId}`);
 
       // Ensure we have a download path
       if (!downloadPath) {
@@ -145,7 +145,7 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
         localPath: pathMappingConfig.download_client_local_path || '',
       });
 
-      await logger?.info(`Download completed`, {
+      logger.info(`Download completed`, {
         downloadClient,
         downloadPath,
         organizePath: organizePath !== downloadPath ? `${organizePath} (mapped)` : organizePath,
@@ -183,7 +183,7 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
         organizePath
       );
 
-      await logger?.info(`Triggered organize_files job for request ${requestId}`);
+      logger.info(`Triggered organize_files job for request ${requestId}`);
 
       return {
         success: true,
@@ -194,7 +194,7 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
         downloadPath: organizePath,
       };
     } else if (progress.state === 'failed') {
-      await logger?.error(`Download failed for request ${requestId}`);
+      logger.error(`Download failed for request ${requestId}`);
 
       // Update request to failed
       await prisma.request.update({
@@ -236,7 +236,7 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
       // Only log every 5% progress to reduce log spam
       const shouldLog = progress.percent % 5 === 0 || progress.percent < 5;
       if (shouldLog) {
-        await logger?.info(`Request ${requestId}: ${progress.percent}% complete (${progress.state})`, {
+        logger.info(`Request ${requestId}: ${progress.percent}% complete (${progress.state})`, {
           speed: progress.speed,
           eta: progress.eta,
         });
@@ -254,7 +254,7 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
       };
     }
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
     // Check if this is a transient "torrent not found" error
     const errorMessage = error instanceof Error ? error.message : '';
@@ -263,7 +263,7 @@ export async function processMonitorDownload(payload: MonitorDownloadPayload): P
     if (isTorrentNotFound) {
       // Transient error - don't mark request as failed, let Bull retry
       // The request stays in 'downloading' status until Bull exhausts all retries
-      await logger?.warn(`Transient error for request ${requestId}, allowing Bull to retry`);
+      logger.warn(`Transient error for request ${requestId}, allowing Bull to retry`);
     } else {
       // Permanent error - mark request as failed immediately
       await prisma.request.update({

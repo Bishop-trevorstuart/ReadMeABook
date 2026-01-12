@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getPlexService } from '@/lib/integrations/plex.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Auth.PlexLogin');
 
 /**
  * POST /api/auth/plex/login
@@ -33,7 +36,7 @@ export async function POST(request: NextRequest) {
       authUrl,
     });
   } catch (error) {
-    console.error('Failed to initiate Plex OAuth:', error);
+    logger.error('Failed to initiate Plex OAuth', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'OAuthError',

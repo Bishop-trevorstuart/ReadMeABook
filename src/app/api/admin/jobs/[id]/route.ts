@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAccessToken } from '@/lib/utils/jwt';
 import { getSchedulerService } from '@/lib/services/scheduler.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Jobs');
 
 /**
  * PUT /api/admin/jobs/:id
@@ -45,7 +48,7 @@ export async function PUT(
       job,
     });
   } catch (error) {
-    console.error('Failed to update scheduled job:', error);
+    logger.error('Failed to update scheduled job', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'InternalError',
@@ -87,7 +90,7 @@ export async function DELETE(
       message: 'Job deleted successfully',
     });
   } catch (error) {
-    console.error('Failed to delete scheduled job:', error);
+    logger.error('Failed to delete scheduled job', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'InternalError',

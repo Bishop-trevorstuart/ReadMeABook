@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '../db';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 import { getJobQueueService } from '../services/job-queue.service';
 import { getConfigService } from '../services/config.service';
 import { PathMapper } from '../utils/path-mapper';
@@ -18,9 +18,9 @@ export interface RetryFailedImportsPayload {
 
 export async function processRetryFailedImports(payload: RetryFailedImportsPayload): Promise<any> {
   const { jobId, scheduledJobId } = payload;
-  const logger = jobId ? createJobLogger(jobId, 'RetryFailedImports') : null;
+  const logger = RMABLogger.forJob(jobId, 'RetryFailedImports');
 
-  await logger?.info('Starting retry job for requests awaiting import...');
+  logger.info('Starting retry job for requests awaiting import...');
 
   try {
     // Load path mapping configuration once
@@ -54,7 +54,7 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
       take: 50, // Limit to 50 requests per run
     });
 
-    await logger?.info(`Found ${requests.length} requests awaiting import`);
+    logger.info(`Found ${requests.length} requests awaiting import`);
 
     if (requests.length === 0) {
       return {
@@ -75,7 +75,7 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
         const downloadHistory = request.downloadHistory[0];
 
         if (!downloadHistory) {
-          await logger?.warn(`No download history found for request ${request.id}, skipping`);
+          logger.warn(`No download history found for request ${request.id}, skipping`);
           skipped++;
           continue;
         }
@@ -91,16 +91,16 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
             const torrent = await qbt.getTorrent(downloadHistory.torrentHash);
             const qbPath = `${torrent.save_path}/${torrent.name}`;
             downloadPath = PathMapper.transform(qbPath, mappingConfig);
-            await logger?.info(
+            logger.info(
               `Got download path from qBittorrent for request ${request.id}: ${qbPath}` +
               (downloadPath !== qbPath ? ` → ${downloadPath} (mapped)` : '')
             );
           } catch (qbtError) {
             // Torrent not found in qBittorrent - try to construct path from config
-            await logger?.warn(`Torrent not found in qBittorrent for request ${request.id}, falling back to configured path`);
+            logger.warn(`Torrent not found in qBittorrent for request ${request.id}, falling back to configured path`);
 
             if (!downloadHistory.torrentName) {
-              await logger?.warn(`No torrent name stored for request ${request.id}, cannot construct fallback path, skipping`);
+              logger.warn(`No torrent name stored for request ${request.id}, cannot construct fallback path, skipping`);
               skipped++;
               continue;
             }
@@ -108,14 +108,14 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
             const downloadDir = await configService.get('download_dir');
 
             if (!downloadDir) {
-              await logger?.error(`download_dir not configured, cannot retry request ${request.id}, skipping`);
+              logger.error(`download_dir not configured, cannot retry request ${request.id}, skipping`);
               skipped++;
               continue;
             }
 
             const fallbackPath = `${downloadDir}/${downloadHistory.torrentName}`;
             downloadPath = PathMapper.transform(fallbackPath, mappingConfig);
-            await logger?.info(
+            logger.info(
               `Using fallback download path for request ${request.id}: ${fallbackPath}` +
               (downloadPath !== fallbackPath ? ` → ${downloadPath} (mapped)` : '')
             );
@@ -128,15 +128,15 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
             const nzbInfo = await sabnzbd.getNZB(downloadHistory.nzbId);
             if (nzbInfo && nzbInfo.downloadPath) {
               downloadPath = PathMapper.transform(nzbInfo.downloadPath, mappingConfig);
-              await logger?.info(
+              logger.info(
                 `Got download path from SABnzbd for request ${request.id}: ${nzbInfo.downloadPath}` +
                 (downloadPath !== nzbInfo.downloadPath ? ` → ${downloadPath} (mapped)` : '')
               );
             } else {
-              await logger?.warn(`NZB ${downloadHistory.nzbId} not found or has no download path for request ${request.id}, falling back to configured path`);
+              logger.warn(`NZB ${downloadHistory.nzbId} not found or has no download path for request ${request.id}, falling back to configured path`);
 
               if (!downloadHistory.torrentName) {
-                await logger?.warn(`No name stored for request ${request.id}, cannot construct fallback path, skipping`);
+                logger.warn(`No name stored for request ${request.id}, cannot construct fallback path, skipping`);
                 skipped++;
                 continue;
               }
@@ -144,27 +144,27 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
               const downloadDir = await configService.get('download_dir');
 
               if (!downloadDir) {
-                await logger?.error(`download_dir not configured, cannot retry request ${request.id}, skipping`);
+                logger.error(`download_dir not configured, cannot retry request ${request.id}, skipping`);
                 skipped++;
                 continue;
               }
 
               const fallbackPath = `${downloadDir}/${downloadHistory.torrentName}`;
               downloadPath = PathMapper.transform(fallbackPath, mappingConfig);
-              await logger?.info(
+              logger.info(
                 `Using fallback download path for request ${request.id}: ${fallbackPath}` +
                 (downloadPath !== fallbackPath ? ` → ${downloadPath} (mapped)` : '')
               );
             }
           } catch (sabnzbdError) {
-            await logger?.warn(`SABnzbd error for request ${request.id}: ${sabnzbdError instanceof Error ? sabnzbdError.message : 'Unknown error'}, skipping`);
+            logger.warn(`SABnzbd error for request ${request.id}: ${sabnzbdError instanceof Error ? sabnzbdError.message : 'Unknown error'}, skipping`);
             skipped++;
             continue;
           }
         } else {
           // No download client ID - use fallback path
           if (!downloadHistory.torrentName) {
-            await logger?.warn(`No download client ID or name for request ${request.id}, skipping`);
+            logger.warn(`No download client ID or name for request ${request.id}, skipping`);
             skipped++;
             continue;
           }
@@ -172,14 +172,14 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
           const downloadDir = await configService.get('download_dir');
 
           if (!downloadDir) {
-            await logger?.error(`download_dir not configured, cannot retry request ${request.id}, skipping`);
+            logger.error(`download_dir not configured, cannot retry request ${request.id}, skipping`);
             skipped++;
             continue;
           }
 
           const configuredPath = `${downloadDir}/${downloadHistory.torrentName}`;
           downloadPath = PathMapper.transform(configuredPath, mappingConfig);
-          await logger?.info(
+          logger.info(
             `Using configured download path for request ${request.id}: ${configuredPath}` +
             (downloadPath !== configuredPath ? ` → ${downloadPath} (mapped)` : '')
           );
@@ -191,14 +191,14 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
           downloadPath
         );
         triggered++;
-        await logger?.info(`Triggered organize job for request ${request.id}: ${request.audiobook.title}`);
+        logger.info(`Triggered organize job for request ${request.id}: ${request.audiobook.title}`);
       } catch (error) {
-        await logger?.error(`Failed to trigger organize for request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        logger.error(`Failed to trigger organize for request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         skipped++;
       }
     }
 
-    await logger?.info(`Triggered ${triggered}/${requests.length} organize jobs (${skipped} skipped)`);
+    logger.info(`Triggered ${triggered}/${requests.length} organize jobs (${skipped} skipped)`);
 
     return {
       success: true,
@@ -208,7 +208,7 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
       skipped,
     };
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     throw error;
   }
 }

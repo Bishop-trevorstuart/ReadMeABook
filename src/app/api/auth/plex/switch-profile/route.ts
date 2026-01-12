@@ -8,6 +8,9 @@ import { getPlexService } from '@/lib/integrations/plex.service';
 import { getEncryptionService } from '@/lib/services/encryption.service';
 import { generateAccessToken, generateRefreshToken } from '@/lib/utils/jwt';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.PlexSwitchProfile');
 
 /**
  * POST /api/auth/plex/switch-profile
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
       profileUsername = profileInfo.friendlyName || `User ${userId}`;
       profileEmail = profileInfo.email || null;
       profileThumb = profileInfo.thumb || null;
-      console.log('[Profile Switch] Using provided profile info:', {
+      logger.debug('Using provided profile info', {
         plexId: profilePlexId,
         username: profileUsername,
       });
@@ -86,7 +89,7 @@ export async function POST(request: NextRequest) {
       const profileUser = await plexService.getUserInfo(profileToken);
 
       if (!profileUser || !profileUser.id) {
-        console.error('[Profile Switch] Failed to get profile user info');
+        logger.error('Failed to get profile user info');
         return NextResponse.json(
           {
             error: 'ServerError',
@@ -100,7 +103,7 @@ export async function POST(request: NextRequest) {
       profileUsername = profileUser.username || `User ${userId}`;
       profileEmail = profileUser.email || null;
       profileThumb = profileUser.thumb || null;
-      console.log('[Profile Switch] Using getUserInfo data:', {
+      logger.debug('Using getUserInfo data', {
         plexId: profilePlexId,
         username: profileUsername,
       });
@@ -134,7 +137,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    console.log('[Profile Switch] User authenticated:', {
+    logger.info('User authenticated', {
       id: user.id,
       plexId: user.plexId,
       username: user.plexUsername,
@@ -167,7 +170,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Failed to switch profile:', error);
+    logger.error('Failed to switch profile', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'ServerError',

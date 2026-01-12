@@ -7,9 +7,13 @@ import axios, { AxiosInstance } from 'axios';
 import https from 'https';
 import * as parseTorrentModule from 'parse-torrent';
 import FormData from 'form-data';
+import { RMABLogger } from '../utils/logger';
 
 // Handle both ESM and CommonJS imports
 const parseTorrent = (parseTorrentModule as any).default || parseTorrentModule;
+
+// Module-level logger
+const logger = RMABLogger.create('QBittorrent');
 
 export interface AddTorrentOptions {
   savePath?: string;
@@ -104,7 +108,7 @@ export class QBittorrentService {
       this.httpsAgent = new https.Agent({
         rejectUnauthorized: false,
       });
-      console.log('[qBittorrent] SSL certificate verification disabled');
+      logger.info('[QBittorrent] SSL certificate verification disabled');
     }
 
     this.client = axios.create({
@@ -126,7 +130,11 @@ export class QBittorrentService {
           password: this.password,
         }),
         {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': this.baseUrl,
+            'Origin': this.baseUrl,
+          },
           httpsAgent: this.httpsAgent,
         }
       );
@@ -141,9 +149,9 @@ export class QBittorrentService {
         throw new Error('Failed to authenticate with qBittorrent');
       }
 
-      console.log('Successfully authenticated with qBittorrent');
+      logger.info('Successfully authenticated');
     } catch (error) {
-      console.error('qBittorrent login failed:', error);
+      logger.error('Login failed', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to authenticate with qBittorrent');
     }
   }
@@ -154,7 +162,7 @@ export class QBittorrentService {
   async addTorrent(url: string, options?: AddTorrentOptions): Promise<string> {
     // Validate URL parameter
     if (!url || typeof url !== 'string' || url.trim() === '') {
-      console.error('[qBittorrent] Invalid download URL:', url);
+      logger.error('Invalid download URL', { url });
       throw new Error('Invalid download URL: URL is required and must be a non-empty string');
     }
 
@@ -171,21 +179,21 @@ export class QBittorrentService {
 
       // Determine if this is a magnet link or .torrent file URL
       if (url.startsWith('magnet:')) {
-        console.log('[qBittorrent] Detected magnet link');
+        logger.info('[QBittorrent] Detected magnet link');
         return await this.addMagnetLink(url, category, options);
       } else {
-        console.log('[qBittorrent] Detected .torrent file URL');
+        logger.info('[QBittorrent] Detected .torrent file URL');
         return await this.addTorrentFile(url, category, options);
       }
     } catch (error) {
       // Try re-authenticating if we get a 403
       if (axios.isAxiosError(error) && error.response?.status === 403) {
-        console.log('[qBittorrent] Session expired, re-authenticating...');
+        logger.info('[QBittorrent] Session expired, re-authenticating...');
         await this.login();
         return this.addTorrent(url, options); // Retry once
       }
 
-      console.error('[qBittorrent] Failed to add torrent:', error);
+      logger.error('Failed to add torrent', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to add torrent to qBittorrent');
     }
   }
@@ -205,12 +213,12 @@ export class QBittorrentService {
       throw new Error('Invalid magnet link - could not extract info_hash');
     }
 
-    console.log(`[qBittorrent] Extracted info_hash from magnet: ${infoHash}`);
+    logger.info(` Extracted info_hash from magnet: ${infoHash}`);
 
     // Check for duplicates
     try {
       const existing = await this.getTorrent(infoHash);
-      console.log(`[qBittorrent] Torrent ${infoHash} already exists (duplicate), returning existing hash`);
+      logger.info(` Torrent ${infoHash} already exists (duplicate), returning existing hash`);
       return infoHash;
     } catch {
       // Torrent doesn't exist, continue with adding
@@ -229,7 +237,7 @@ export class QBittorrentService {
       form.append('tags', options.tags.join(','));
     }
 
-    console.log('[qBittorrent] Uploading magnet link...');
+    logger.info('[QBittorrent] Uploading magnet link...');
 
     const response = await this.client.post('/torrents/add', form, {
       headers: {
@@ -242,7 +250,7 @@ export class QBittorrentService {
       throw new Error(`qBittorrent rejected magnet link: ${response.data}`);
     }
 
-    console.log(`[qBittorrent] Successfully added magnet link: ${infoHash}`);
+    logger.info(` Successfully added magnet link: ${infoHash}`);
     return infoHash;
   }
 
@@ -254,7 +262,7 @@ export class QBittorrentService {
     category: string,
     options?: AddTorrentOptions
   ): Promise<string> {
-    console.log(`[qBittorrent] Downloading .torrent file from: ${torrentUrl}`);
+    logger.info(` Downloading .torrent file from: ${torrentUrl}`);
 
     // Make initial request with maxRedirects: 0 to intercept redirects
     // Some Prowlarr indexers return HTTP URLs that redirect to magnet: links
@@ -267,14 +275,14 @@ export class QBittorrentService {
         timeout: 30000, // 30 seconds - public indexers can be slow
       });
 
-      console.log(`[qBittorrent] Got 2xx response, size=${torrentResponse.data.length} bytes`);
+      logger.info(` Got 2xx response, size=${torrentResponse.data.length} bytes`);
 
       // Check if response body contains a magnet link
       if (torrentResponse.data.length > 0) {
         const responseText = torrentResponse.data.toString();
         const magnetMatch = responseText.match(/^magnet:\?[^\s]+$/);
         if (magnetMatch) {
-          console.log(`[qBittorrent] Response body is a magnet link`);
+          logger.info(` Response body is a magnet link`);
           return await this.addMagnetLink(magnetMatch[0], category, options);
         }
       }
@@ -283,7 +291,7 @@ export class QBittorrentService {
     } catch (error) {
       if (!axios.isAxiosError(error) || !error.response) {
         // Not an axios error or no response - re-throw
-        console.error(`[qBittorrent] Request failed:`, error);
+        logger.error('Request failed', { error: error instanceof Error ? error.message : String(error) });
         throw error;
       }
 
@@ -292,26 +300,26 @@ export class QBittorrentService {
       // Handle 3xx redirects
       if (status >= 300 && status < 400) {
         const location = error.response.headers['location'];
-        console.log(`[qBittorrent] Got ${status} redirect to: ${location}`);
+        logger.info(` Got ${status} redirect to: ${location}`);
 
         // Check if redirect target is a magnet link
         if (location && location.startsWith('magnet:')) {
-          console.log(`[qBittorrent] Redirect target is magnet link`);
+          logger.info(` Redirect target is magnet link`);
           return await this.addMagnetLink(location, category, options);
         }
 
         // Regular HTTP redirect - follow it manually
         if (location && (location.startsWith('http://') || location.startsWith('https://'))) {
-          console.log(`[qBittorrent] Following HTTP redirect...`);
+          logger.info(` Following HTTP redirect...`);
           try {
             torrentResponse = await axios.get(location, {
               responseType: 'arraybuffer',
               timeout: 30000,
               maxRedirects: 5,
             });
-            console.log(`[qBittorrent] After following redirect: size=${torrentResponse.data.length} bytes`);
+            logger.info(` After following redirect: size=${torrentResponse.data.length} bytes`);
           } catch (redirectError) {
-            console.error(`[qBittorrent] Failed to follow redirect:`, redirectError);
+            logger.error('Failed to follow redirect', { error: redirectError instanceof Error ? redirectError.message : String(redirectError) });
             throw new Error('Failed to download torrent file after redirect');
           }
         } else {
@@ -319,20 +327,20 @@ export class QBittorrentService {
         }
       } else {
         // Non-redirect error (4xx, 5xx)
-        console.error(`[qBittorrent] HTTP error ${status}:`, error.message);
+        logger.error(`HTTP error ${status}`, { error: error.message });
         throw new Error(`Failed to download torrent: HTTP ${status}`);
       }
     }
 
     const torrentBuffer = Buffer.from(torrentResponse.data);
-    console.log(`[qBittorrent] Processing torrent file: ${torrentBuffer.length} bytes`);
+    logger.info(` Processing torrent file: ${torrentBuffer.length} bytes`);
 
     // Parse .torrent file to extract info_hash (deterministic)
     let parsedTorrent: any;
     try {
       parsedTorrent = await parseTorrent(torrentBuffer);
     } catch (error) {
-      console.error('[qBittorrent] Failed to parse .torrent file:', error);
+      logger.error('Failed to parse .torrent file', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Invalid .torrent file - failed to parse');
     }
 
@@ -342,13 +350,13 @@ export class QBittorrentService {
       throw new Error('Failed to extract info_hash from .torrent file');
     }
 
-    console.log(`[qBittorrent] Extracted info_hash: ${infoHash}`);
-    console.log(`[qBittorrent] Torrent name: ${parsedTorrent.name || 'Unknown'}`);
+    logger.info(` Extracted info_hash: ${infoHash}`);
+    logger.info(` Torrent name: ${parsedTorrent.name || 'Unknown'}`);
 
     // Check for duplicates
     try {
       const existing = await this.getTorrent(infoHash);
-      console.log(`[qBittorrent] Torrent ${infoHash} already exists (duplicate), returning existing hash`);
+      logger.info(` Torrent ${infoHash} already exists (duplicate), returning existing hash`);
       return infoHash;
     } catch {
       // Torrent doesn't exist, continue with adding
@@ -371,7 +379,7 @@ export class QBittorrentService {
       formData.append('tags', options.tags.join(','));
     }
 
-    console.log('[qBittorrent] Uploading .torrent file content...');
+    logger.info('[QBittorrent] Uploading .torrent file content...');
 
     const response = await this.client.post('/torrents/add', formData, {
       headers: {
@@ -386,7 +394,7 @@ export class QBittorrentService {
       throw new Error(`qBittorrent rejected .torrent file: ${response.data}`);
     }
 
-    console.log(`[qBittorrent] Successfully added torrent: ${infoHash}`);
+    logger.info(` Successfully added torrent: ${infoHash}`);
     return infoHash;
   }
 
@@ -410,7 +418,7 @@ export class QBittorrentService {
 
       if (!existingCategory) {
         // Category doesn't exist - create it
-        console.log(`[qBittorrent] Creating category "${category}" with save path: ${this.defaultSavePath}`);
+        logger.info(` Creating category "${category}" with save path: ${this.defaultSavePath}`);
 
         await this.client.post(
           '/torrents/createCategory',
@@ -426,13 +434,13 @@ export class QBittorrentService {
           }
         );
 
-        console.log(`[qBittorrent] Category "${category}" created successfully`);
+        logger.info(` Category "${category}" created successfully`);
       } else {
         // Category exists - check if save path needs updating
         const currentSavePath = existingCategory.savePath || existingCategory.save_path;
 
         if (currentSavePath !== this.defaultSavePath) {
-          console.log(`[qBittorrent] Updating category "${category}" save path from "${currentSavePath}" to "${this.defaultSavePath}"`);
+          logger.info(` Updating category "${category}" save path from "${currentSavePath}" to "${this.defaultSavePath}"`);
 
           await this.client.post(
             '/torrents/editCategory',
@@ -448,23 +456,23 @@ export class QBittorrentService {
             }
           );
 
-          console.log(`[qBittorrent] Category "${category}" save path updated successfully`);
+          logger.info(` Category "${category}" save path updated successfully`);
         } else {
-          console.log(`[qBittorrent] Category "${category}" already has correct save path: ${this.defaultSavePath}`);
+          logger.info(` Category "${category}" already has correct save path: ${this.defaultSavePath}`);
         }
       }
     } catch (error) {
       // If we can't ensure the category, log error but don't throw
       // Torrents can still be added with per-torrent savepath parameter
       if (axios.isAxiosError(error)) {
-        console.error(`[qBittorrent] Failed to ensure category "${category}":`, {
+        logger.error(` Failed to ensure category "${category}":`, {
           status: error.response?.status,
           statusText: error.response?.statusText,
           data: error.response?.data,
           requestedPath: this.defaultSavePath,
         });
       } else {
-        console.error(`[qBittorrent] Failed to ensure category:`, error);
+        logger.error('Failed to ensure category', { error: error instanceof Error ? error.message : String(error) });
       }
     }
   }
@@ -516,7 +524,7 @@ export class QBittorrentService {
 
       return response.data;
     } catch (error) {
-      console.error('Failed to get torrents:', error);
+      logger.error('Failed to get torrents', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to get torrents from qBittorrent');
     }
   }
@@ -541,9 +549,9 @@ export class QBittorrentService {
         }
       );
 
-      console.log(`Paused torrent: ${hash}`);
+      logger.info(`Paused torrent: ${hash}`);
     } catch (error) {
-      console.error('Failed to pause torrent:', error);
+      logger.error('Failed to pause torrent', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to pause torrent');
     }
   }
@@ -568,9 +576,9 @@ export class QBittorrentService {
         }
       );
 
-      console.log(`Resumed torrent: ${hash}`);
+      logger.info(`Resumed torrent: ${hash}`);
     } catch (error) {
-      console.error('Failed to resume torrent:', error);
+      logger.error('Failed to resume torrent', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to resume torrent');
     }
   }
@@ -598,9 +606,9 @@ export class QBittorrentService {
         }
       );
 
-      console.log(`Deleted torrent: ${hash}`);
+      logger.info(`Deleted torrent: ${hash}`);
     } catch (error) {
-      console.error('Failed to delete torrent:', error);
+      logger.error('Failed to delete torrent', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to delete torrent');
     }
   }
@@ -621,7 +629,7 @@ export class QBittorrentService {
 
       return response.data;
     } catch (error) {
-      console.error('Failed to get torrent files:', error);
+      logger.error('Failed to get torrent files', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to get torrent files');
     }
   }
@@ -649,9 +657,9 @@ export class QBittorrentService {
         }
       );
 
-      console.log(`Set category for torrent ${hash}: ${category}`);
+      logger.info(`Set category for torrent ${hash}: ${category}`);
     } catch (error) {
-      console.error('Failed to set category:', error);
+      logger.error('Failed to set category', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to set torrent category');
     }
   }
@@ -664,7 +672,7 @@ export class QBittorrentService {
       await this.login();
       return true;
     } catch (error) {
-      console.error('qBittorrent connection test failed:', error);
+      logger.error('Connection test failed', { error: error instanceof Error ? error.message : String(error) });
       return false;
     }
   }
@@ -686,7 +694,7 @@ export class QBittorrentService {
       httpsAgent = new https.Agent({
         rejectUnauthorized: false,
       });
-      console.log('[qBittorrent] SSL certificate verification disabled for test connection');
+      logger.info('[QBittorrent] SSL certificate verification disabled for test connection');
     }
 
     try {
@@ -694,7 +702,11 @@ export class QBittorrentService {
         `${baseUrl}/api/v2/auth/login`,
         new URLSearchParams({ username, password }),
         {
-          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          headers: {
+            'Content-Type': 'application/x-www-form-urlencoded',
+            'Referer': baseUrl,
+            'Origin': baseUrl,
+          },
           httpsAgent,
         }
       );
@@ -714,7 +726,7 @@ export class QBittorrentService {
 
       return versionResponse.data || 'Connected';
     } catch (error) {
-      console.error('[qBittorrent] Connection test failed:', error);
+      logger.error('Connection test failed', { error: error instanceof Error ? error.message : String(error) });
 
       // Enhanced error messages for common issues
       if (axios.isAxiosError(error)) {
@@ -856,7 +868,7 @@ let configLoaded = false;
  * Forces service to reload configuration from database on next use
  */
 export function invalidateQBittorrentService(): void {
-  console.log('[qBittorrent] Invalidating service singleton - will reload config on next use');
+  logger.info('[QBittorrent] Invalidating service singleton - will reload config on next use');
   qbittorrentService = null;
   configLoaded = false;
 }
@@ -869,7 +881,7 @@ export async function getQBittorrentService(): Promise<QBittorrentService> {
       const { getConfigService } = await import('@/lib/services/config.service');
       const configService = getConfigService();
 
-      console.log('[qBittorrent] Loading configuration from database...');
+      logger.info('[QBittorrent] Loading configuration from database...');
       const config = await configService.getMany([
         'download_client_url',
         'download_client_username',
@@ -878,7 +890,7 @@ export async function getQBittorrentService(): Promise<QBittorrentService> {
         'download_client_disable_ssl_verify',
       ]);
 
-      console.log('[qBittorrent] Config loaded:', {
+      logger.info('[QBittorrent] Config loaded:', {
         hasUrl: !!config.download_client_url,
         hasUsername: !!config.download_client_username,
         hasPassword: !!config.download_client_password,
@@ -904,7 +916,7 @@ export async function getQBittorrentService(): Promise<QBittorrentService> {
 
       if (missingFields.length > 0) {
         const errorMsg = `qBittorrent is not fully configured. Missing: ${missingFields.join(', ')}. Please configure qBittorrent in the admin settings.`;
-        console.error('[qBittorrent]', errorMsg);
+        logger.error('Configuration incomplete', { missingFields });
         throw new Error(errorMsg);
       }
 
@@ -915,7 +927,7 @@ export async function getQBittorrentService(): Promise<QBittorrentService> {
       const savePath = config.download_dir as string;
       const disableSSLVerify = config.download_client_disable_ssl_verify === 'true';
 
-      console.log('[qBittorrent] Creating service instance...');
+      logger.info('[QBittorrent] Creating service instance...');
       qbittorrentService = new QBittorrentService(
         url,
         username,
@@ -926,17 +938,17 @@ export async function getQBittorrentService(): Promise<QBittorrentService> {
       );
 
       // Test connection
-      console.log('[qBittorrent] Testing connection...');
+      logger.info('[QBittorrent] Testing connection...');
       const isConnected = await qbittorrentService.testConnection();
       if (!isConnected) {
-        console.warn('[qBittorrent] Connection test failed');
+        logger.warn('[QBittorrent] Connection test failed');
         throw new Error('qBittorrent connection test failed. Please check your configuration in admin settings.');
       } else {
-        console.log('[qBittorrent] Connection test successful');
+        logger.info('[QBittorrent] Connection test successful');
         configLoaded = true; // Mark as successfully loaded
       }
     } catch (error) {
-      console.error('[qBittorrent] Failed to initialize service:', error);
+      logger.error('Failed to initialize service', { error: error instanceof Error ? error.message : String(error) });
       qbittorrentService = null; // Reset service on error
       configLoaded = false;
       throw error;

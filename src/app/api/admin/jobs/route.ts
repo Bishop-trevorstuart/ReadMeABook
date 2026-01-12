@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { verifyAccessToken } from '@/lib/utils/jwt';
 import { getSchedulerService } from '@/lib/services/scheduler.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Jobs');
 
 /**
  * GET /api/admin/jobs
@@ -31,7 +34,7 @@ export async function GET(request: NextRequest) {
       jobs,
     });
   } catch (error) {
-    console.error('Failed to get scheduled jobs:', error);
+    logger.error('Failed to get scheduled jobs', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'InternalError',
@@ -74,7 +77,7 @@ export async function POST(request: NextRequest) {
       job,
     });
   } catch (error) {
-    console.error('Failed to create scheduled job:', error);
+    logger.error('Failed to create scheduled job', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'InternalError',

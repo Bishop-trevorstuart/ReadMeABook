@@ -8,6 +8,9 @@ import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middlewar
 import { prisma } from '@/lib/db';
 import { QBittorrentService } from '@/lib/integrations/qbittorrent.service';
 import { SABnzbdService } from '@/lib/integrations/sabnzbd.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.TestDownloadClient');
 
 export async function POST(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -24,7 +27,7 @@ export async function POST(request: NextRequest) {
           localPath,
         } = await request.json();
 
-        console.log('[TestDownloadClient] Received request:', { type, url, hasUsername: !!username, hasPassword: !!password });
+        logger.debug('Received request', { type, url, hasUsername: !!username, hasPassword: !!password });
 
         if (!type || !url) {
           return NextResponse.json(
@@ -61,7 +64,7 @@ export async function POST(request: NextRequest) {
         let version: string | undefined;
 
         if (type === 'qbittorrent') {
-          console.log('[TestDownloadClient] Testing qBittorrent connection');
+          logger.debug('Testing qBittorrent connection');
           if (!username || !actualPassword) {
             return NextResponse.json(
               { success: false, error: 'Username and password are required for qBittorrent' },
@@ -77,7 +80,7 @@ export async function POST(request: NextRequest) {
             disableSSLVerify || false
           );
         } else if (type === 'sabnzbd') {
-          console.log('[TestDownloadClient] Testing SABnzbd connection');
+          logger.debug('Testing SABnzbd connection');
           if (!actualPassword) {
             return NextResponse.json(
               { success: false, error: 'API key (password) is required for SABnzbd' },
@@ -134,7 +137,7 @@ export async function POST(request: NextRequest) {
           version,
         });
       } catch (error) {
-        console.error('[Admin Settings] Download client test failed:', error);
+        logger.error('Download client test failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

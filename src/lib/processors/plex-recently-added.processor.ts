@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '../db';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 import { getLibraryService } from '../services/library';
 
 export interface PlexRecentlyAddedPayload {
@@ -16,14 +16,14 @@ export interface PlexRecentlyAddedPayload {
 
 export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPayload): Promise<any> {
   const { jobId, scheduledJobId } = payload;
-  const logger = jobId ? createJobLogger(jobId, 'RecentlyAdded') : null;
+  const logger = RMABLogger.forJob(jobId, 'RecentlyAdded');
 
   const { getConfigService } = await import('../services/config.service');
   const configService = getConfigService();
 
   // Get backend mode
   const backendMode = await configService.getBackendMode();
-  await logger?.info(`Backend mode: ${backendMode}`);
+  logger.info(`Backend mode: ${backendMode}`);
 
   // Validate configuration based on backend mode
   if (backendMode === 'audiobookshelf') {
@@ -40,7 +40,7 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
 
     if (missingFields.length > 0) {
       const errorMsg = `Audiobookshelf is not configured. Missing: ${missingFields.join(', ')}`;
-      await logger?.warn(errorMsg);
+      logger.warn(errorMsg);
       return { success: false, message: errorMsg, skipped: true };
     }
   } else {
@@ -57,12 +57,12 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
 
     if (missingFields.length > 0) {
       const errorMsg = `Plex is not configured. Missing: ${missingFields.join(', ')}`;
-      await logger?.warn(errorMsg);
+      logger.warn(errorMsg);
       return { success: false, message: errorMsg, skipped: true };
     }
   }
 
-  await logger?.info(`Starting recently added check...`);
+  logger.info(`Starting recently added check...`);
 
   // Get library service (automatically selects Plex or Audiobookshelf)
   const libraryService = await getLibraryService();
@@ -76,7 +76,7 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
     // Fetch top 10 recently added items using abstraction layer
     const recentItems = await libraryService.getRecentlyAdded(libraryId!, 10);
 
-    await logger?.info(`Found ${recentItems.length} recently added items`);
+    logger.info(`Found ${recentItems.length} recently added items`);
 
     if (recentItems.length === 0) {
       return { success: true, message: 'No recent items', newCount: 0, updatedCount: 0, matchedDownloads: 0 };
@@ -112,7 +112,7 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
           },
         });
         newCount++;
-        await logger?.info(`New item added: ${item.title} by ${item.author}`);
+        logger.info(`New item added: ${item.title} by ${item.author}`);
       } else {
         await prisma.plexLibrary.update({
           where: { plexGuid: item.externalId },
@@ -144,7 +144,7 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
     });
 
     if (downloadedRequests.length > 0) {
-      await logger?.info(`Checking ${downloadedRequests.length} downloaded requests for matches`);
+      logger.info(`Checking ${downloadedRequests.length} downloaded requests for matches`);
 
       const { findPlexMatch } = await import('../utils/audiobook-matcher');
 
@@ -159,7 +159,7 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
           });
 
           if (match) {
-            await logger?.info(`Match found: "${audiobook.title}" → "${match.title}"`);
+            logger.info(`Match found: "${audiobook.title}" → "${match.title}"`);
 
             // Update audiobook with matched library item ID
             const updateData: any = { updatedAt: new Date() };
@@ -187,18 +187,18 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
               const itemId = match.plexGuid; // plexGuid contains the Audiobookshelf item ID
               const asin = audiobook.audibleAsin || undefined;
               const matchInfo = asin ? ` with ASIN ${asin}` : '';
-              await logger?.info(`Triggering metadata match for matched item: ${itemId}${matchInfo}`);
+              logger.info(`Triggering metadata match for matched item: ${itemId}${matchInfo}`);
               const { triggerABSItemMatch } = await import('../services/audiobookshelf/api');
               await triggerABSItemMatch(itemId, asin);
             }
           }
         } catch (error) {
-          await logger?.error(`Failed to match request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+          logger.error(`Failed to match request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
         }
       }
     }
 
-    await logger?.info(`Complete: ${newCount} new, ${updatedCount} updated, ${matchedDownloads} matched downloads`);
+    logger.info(`Complete: ${newCount} new, ${updatedCount} updated, ${matchedDownloads} matched downloads`);
 
     return {
       success: true,
@@ -209,7 +209,7 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
       matchedDownloads,
     };
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     throw error;
   }
 }

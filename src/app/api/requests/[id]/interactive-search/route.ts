@@ -8,6 +8,9 @@ import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { getProwlarrService } from '@/lib/integrations/prowlarr.service';
 import { rankTorrents } from '@/lib/utils/ranking-algorithm';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.InteractiveSearch');
 
 /**
  * POST /api/requests/[id]/interactive-search
@@ -96,9 +99,9 @@ export async function POST(
       // Use custom title if provided, otherwise use audiobook's title
       const searchQuery = customTitle || requestRecord.audiobook.title;
 
-      console.log(`[InteractiveSearch] Searching ${enabledIndexerIds.length} enabled indexers for: ${searchQuery}`);
+      logger.info(`Searching ${enabledIndexerIds.length} enabled indexers`, { searchQuery });
       if (customTitle) {
-        console.log(`[InteractiveSearch] Using custom search title (original: "${requestRecord.audiobook.title}")`);
+        logger.debug('Using custom search title', { customTitle, originalTitle: requestRecord.audiobook.title });
       }
 
       const results = await prowlarr.search(searchQuery, {
@@ -106,7 +109,7 @@ export async function POST(
         maxResults: 100, // Increased limit for broader search
       });
 
-      console.log(`[InteractiveSearch] Found ${results.length} raw results for request ${id}`);
+      logger.debug(`Found ${results.length} raw results`, { requestId: id });
 
       if (results.length === 0) {
         return NextResponse.json({
@@ -125,42 +128,30 @@ export async function POST(
 
       // No threshold filtering for interactive search - show all results
       // User can see scores and make their own decision
-      console.log(`[InteractiveSearch] Ranked ${rankedResults.length} results (no threshold filter - user decides)`);
+      logger.debug(`Ranked ${rankedResults.length} results (no threshold filter - user decides)`);
 
       // Log top 3 results with detailed score breakdown for debugging
       const top3 = rankedResults.slice(0, 3);
       if (top3.length > 0) {
-        console.log(`[InteractiveSearch] ==================== RANKING DEBUG ====================`);
-        console.log(`[InteractiveSearch] Search Query: "${searchQuery}"`);
-        console.log(`[InteractiveSearch] Requested Title (for ranking): "${requestRecord.audiobook.title}"`);
-        console.log(`[InteractiveSearch] Requested Author (for ranking): "${requestRecord.audiobook.author}"`);
-        console.log(`[InteractiveSearch] Top ${top3.length} results (out of ${rankedResults.length} total):`);
-        console.log(`[InteractiveSearch] --------------------------------------------------------`);
+        logger.debug('==================== RANKING DEBUG ====================');
+        logger.debug('Search parameters', { searchQuery, requestedTitle: requestRecord.audiobook.title, requestedAuthor: requestRecord.audiobook.author });
+        logger.debug(`Top ${top3.length} results (out of ${rankedResults.length} total)`);
+        logger.debug('--------------------------------------------------------');
         top3.forEach((result, index) => {
-          console.log(`[InteractiveSearch] ${index + 1}. "${result.title}"`);
-          console.log(`[InteractiveSearch]    Indexer: ${result.indexer}${result.indexerId ? ` (ID: ${result.indexerId})` : ''}`);
-          console.log(`[InteractiveSearch]    `);
-          console.log(`[InteractiveSearch]    Base Score: ${result.score.toFixed(1)}/100`);
-          console.log(`[InteractiveSearch]    - Title/Author Match: ${result.breakdown.matchScore.toFixed(1)}/60`);
-          console.log(`[InteractiveSearch]    - Format Quality: ${result.breakdown.formatScore.toFixed(1)}/25 (${result.format || 'unknown'})`);
-          console.log(`[InteractiveSearch]    - Seeder Count: ${result.breakdown.seederScore.toFixed(1)}/15 (${result.seeders} seeders)`);
-          console.log(`[InteractiveSearch]    `);
-          console.log(`[InteractiveSearch]    Bonus Points: +${result.bonusPoints.toFixed(1)}`);
-          if (result.bonusModifiers.length > 0) {
-            result.bonusModifiers.forEach(mod => {
-              console.log(`[InteractiveSearch]    - ${mod.reason}: +${mod.points.toFixed(1)}`);
-            });
-          }
-          console.log(`[InteractiveSearch]    `);
-          console.log(`[InteractiveSearch]    Final Score: ${result.finalScore.toFixed(1)}`);
-          if (result.breakdown.notes.length > 0) {
-            console.log(`[InteractiveSearch]    Notes: ${result.breakdown.notes.join(', ')}`);
-          }
-          if (index < top3.length - 1) {
-            console.log(`[InteractiveSearch] --------------------------------------------------------`);
-          }
+          logger.debug(`${index + 1}. "${result.title}"`, {
+            indexer: result.indexer,
+            indexerId: result.indexerId,
+            baseScore: `${result.score.toFixed(1)}/100`,
+            matchScore: `${result.breakdown.matchScore.toFixed(1)}/60`,
+            formatScore: `${result.breakdown.formatScore.toFixed(1)}/25 (${result.format || 'unknown'})`,
+            seederScore: `${result.breakdown.seederScore.toFixed(1)}/15 (${result.seeders} seeders)`,
+            bonusPoints: `+${result.bonusPoints.toFixed(1)}`,
+            bonusModifiers: result.bonusModifiers.map(mod => `${mod.reason}: +${mod.points.toFixed(1)}`),
+            finalScore: result.finalScore.toFixed(1),
+            notes: result.breakdown.notes,
+          });
         });
-        console.log(`[InteractiveSearch] ========================================================`);
+        logger.debug('========================================================');
       }
 
       // Add rank position to each result
@@ -177,7 +168,7 @@ export async function POST(
           : 'No results found',
       });
     } catch (error) {
-      console.error('Failed to perform interactive search:', error);
+      logger.error('Failed to perform interactive search', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json(
         {
           error: 'SearchError',

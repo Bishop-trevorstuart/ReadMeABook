@@ -4,6 +4,9 @@
  */
 
 import { getConfigService } from '../config.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('Audiobookshelf');
 
 interface ABSRequestOptions {
   method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
@@ -146,6 +149,6 @@ export async function triggerABSItemMatch(itemId: string, asin?: string) {
     });
   } catch (error) {
     // Don't throw - matching is best-effort, scan should continue even if match fails
-    console.error(`[ABS] Failed to trigger match for item ${itemId}:`, error instanceof Error ? error.message : error);
+    logger.error(`Failed to trigger match for item ${itemId}`, { error: error instanceof Error ? error.message : String(error) });
   }
 }

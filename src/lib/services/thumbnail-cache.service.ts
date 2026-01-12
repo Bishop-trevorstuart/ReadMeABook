@@ -7,6 +7,9 @@ import fs from 'fs/promises';
 import path from 'path';
 import crypto from 'crypto';
 import axios from 'axios';
+import { RMABLogger } from '../utils/logger';
+
+const logger = RMABLogger.create('ThumbnailCache');
 
 const CACHE_DIR = '/app/cache/thumbnails';
 const MAX_FILE_SIZE = 5 * 1024 * 1024; // 5MB max per image
@@ -20,7 +23,7 @@ export class ThumbnailCacheService {
     try {
       await fs.mkdir(CACHE_DIR, { recursive: true });
     } catch (error) {
-      console.error('[ThumbnailCache] Failed to create cache directory:', error);
+      logger.error('Failed to create cache directory', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
@@ -79,18 +82,18 @@ export class ThumbnailCacheService {
       // Verify content type is an image
       const contentType = response.headers['content-type'];
       if (!contentType || !contentType.startsWith('image/')) {
-        console.warn(`[ThumbnailCache] Invalid content type for ${asin}: ${contentType}`);
+        logger.warn(`Invalid content type for ${asin}: ${contentType}`);
         return null;
       }
 
       // Write to file
       await fs.writeFile(filePath, Buffer.from(response.data));
 
-      console.log(`[ThumbnailCache] Cached thumbnail for ${asin}: ${filePath}`);
+      logger.info(`Cached thumbnail for ${asin}: ${filePath}`);
       return filePath;
     } catch (error) {
       // Log error but don't throw - we'll fall back to the original URL
-      console.error(`[ThumbnailCache] Failed to cache thumbnail for ${asin}:`, error);
+      logger.error(`Failed to cache thumbnail for ${asin}`, { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -108,10 +111,10 @@ export class ThumbnailCacheService {
       for (const file of asinFiles) {
         const filePath = path.join(CACHE_DIR, file);
         await fs.unlink(filePath);
-        console.log(`[ThumbnailCache] Deleted thumbnail: ${filePath}`);
+        logger.info(`Deleted thumbnail: ${filePath}`);
       }
     } catch (error) {
-      console.error(`[ThumbnailCache] Failed to delete thumbnail for ${asin}:`, error);
+      logger.error(`Failed to delete thumbnail for ${asin}`, { error: error instanceof Error ? error.message : String(error) });
     }
   }
 
@@ -135,14 +138,14 @@ export class ThumbnailCacheService {
           const filePath = path.join(CACHE_DIR, file);
           await fs.unlink(filePath);
           deletedCount++;
-          console.log(`[ThumbnailCache] Deleted unused thumbnail: ${file}`);
+          logger.info(`Deleted unused thumbnail: ${file}`);
         }
       }
 
-      console.log(`[ThumbnailCache] Cleanup complete: ${deletedCount} thumbnails deleted`);
+      logger.info(`Cleanup complete: ${deletedCount} thumbnails deleted`);
       return deletedCount;
     } catch (error) {
-      console.error('[ThumbnailCache] Failed to cleanup thumbnails:', error);
+      logger.error('Failed to cleanup thumbnails', { error: error instanceof Error ? error.message : String(error) });
       return 0;
     }
   }

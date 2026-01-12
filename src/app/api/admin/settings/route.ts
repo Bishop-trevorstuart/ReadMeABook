@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings');
 
 export async function GET(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -103,7 +106,7 @@ export async function GET(request: NextRequest) {
 
     return NextResponse.json(settings);
       } catch (error) {
-        console.error('[Admin] Failed to fetch settings:', error);
+        logger.error('Failed to fetch settings', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to fetch settings' },
           { status: 500 }

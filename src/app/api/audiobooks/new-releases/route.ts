@@ -9,6 +9,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { enrichAudiobooksWithMatches } from '@/lib/utils/audiobook-matcher';
 import { getCurrentUser } from '@/lib/middleware/auth';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Audiobooks.NewReleases');
 
 /**
  * GET /api/audiobooks/new-releases?page=1&limit=20
@@ -128,7 +131,7 @@ export async function GET(request: NextRequest) {
       lastSync: audiobooks[0]?.lastSyncedAt?.toISOString() || null,
     });
   } catch (error) {
-    console.error('Failed to get new releases:', error);
+    logger.error('Failed to get new releases', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'FetchError',

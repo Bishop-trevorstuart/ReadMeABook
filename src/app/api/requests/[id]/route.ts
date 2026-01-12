@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.RequestById');
 
 /**
  * GET /api/requests/[id]
@@ -70,7 +73,7 @@ export async function GET(
         request: requestRecord,
       });
     } catch (error) {
-      console.error('Failed to get request:', error);
+      logger.error('Failed to get request', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json(
         {
           error: 'FetchError',
@@ -304,7 +307,7 @@ export async function PATCH(
         { status: 400 }
       );
     } catch (error) {
-      console.error('Failed to update request:', error);
+      logger.error('Failed to update request', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json(
         {
           error: 'UpdateError',
@@ -351,7 +354,7 @@ export async function DELETE(
         message: 'Request deleted successfully',
       });
     } catch (error) {
-      console.error('Failed to delete request:', error);
+      logger.error('Failed to delete request', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json(
         {
           error: 'DeleteError',

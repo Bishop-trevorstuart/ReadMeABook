@@ -5,6 +5,9 @@
 
 import { getJobQueueService, ScanPlexPayload } from './job-queue.service';
 import { prisma } from '../db';
+import { RMABLogger } from '../utils/logger';
+
+const logger = RMABLogger.create('Scheduler');
 
 export type ScheduledJobType = 'plex_library_scan' | 'plex_recently_added_check' | 'audible_refresh' | 'retry_missing_torrents' | 'retry_failed_imports' | 'cleanup_seeded_torrents' | 'monitor_rss_feeds';
 
@@ -44,7 +47,7 @@ export class SchedulerService {
    * Initialize scheduler and set up default jobs if they don't exist
    */
   async start(): Promise<void> {
-    console.log('[Scheduler] Initializing scheduler service...');
+    logger.info('Initializing scheduler service...');
 
     // Create default jobs if they don't exist
     await this.ensureDefaultJobs();
@@ -55,7 +58,7 @@ export class SchedulerService {
     // Check and trigger overdue jobs
     await this.triggerOverdueJobs();
 
-    console.log('[Scheduler] Scheduler service started');
+    logger.info('Scheduler service started');
   }
 
   /**
@@ -123,7 +126,7 @@ export class SchedulerService {
         await prisma.scheduledJob.create({
           data: defaultJob,
         });
-        console.log(`[Scheduler] Created default job: ${defaultJob.name} (disabled by default)`);
+        logger.info(`Created default job: ${defaultJob.name} (disabled by default)`);
       }
     }
   }
@@ -140,7 +143,7 @@ export class SchedulerService {
       await this.scheduleJob(job);
     }
 
-    console.log(`[Scheduler] Scheduled ${jobs.length} jobs`);
+    logger.info(`Scheduled ${jobs.length} jobs`);
   }
 
   /**
@@ -154,9 +157,9 @@ export class SchedulerService {
         job.schedule,
         `scheduled-${job.id}`
       );
-      console.log(`[Scheduler] Job scheduled: ${job.name} (${job.schedule})`);
+      logger.info(`Job scheduled: ${job.name} (${job.schedule})`);
     } catch (error) {
-      console.error(`[Scheduler] Failed to schedule job ${job.name}:`, error);
+      logger.error(`Failed to schedule job ${job.name}`, { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
@@ -171,9 +174,9 @@ export class SchedulerService {
         job.schedule,
         `scheduled-${job.id}`
       );
-      console.log(`[Scheduler] Job unscheduled: ${job.name}`);
+      logger.info(`Job unscheduled: ${job.name}`);
     } catch (error) {
-      console.error(`[Scheduler] Failed to unschedule job ${job.name}:`, error);
+      logger.error(`Failed to unschedule job ${job.name}`, { error: error instanceof Error ? error.message : String(error) });
       // Don't throw - job might not exist in Bull yet
     }
   }
@@ -324,7 +327,7 @@ export class SchedulerService {
       },
     });
 
-    console.log(`[Scheduler] Job "${job.name}" triggered with Bull job ID: ${bullJobId}`);
+    logger.info(`Job "${job.name}" triggered with Bull job ID: ${bullJobId}`);
 
     return bullJobId;
   }
@@ -362,7 +365,7 @@ export class SchedulerService {
 
       if (missingFields.length > 0) {
         const errorMsg = `Audiobookshelf is not configured. Missing: ${missingFields.join(', ')}. Please configure Audiobookshelf in the admin settings before running library scans.`;
-        console.error('[ScanLibrary] Error:', errorMsg);
+        logger.error(errorMsg);
         throw new Error(errorMsg);
       }
 
@@ -386,14 +389,14 @@ export class SchedulerService {
 
       if (missingFields.length > 0) {
         const errorMsg = `Plex is not configured. Missing: ${missingFields.join(', ')}. Please configure Plex in the admin settings before running library scans.`;
-        console.error('[ScanLibrary] Error:', errorMsg);
+        logger.error(errorMsg);
         throw new Error(errorMsg);
       }
 
       libraryId = job.payload?.libraryId || plexConfig.plex_audiobook_library_id;
     }
 
-    console.log(`[ScanLibrary] Triggering ${backendMode} library scan for library: ${libraryId}`);
+    logger.info(`Triggering ${backendMode} library scan for library: ${libraryId}`);
 
     return await this.jobQueue.addPlexScanJob(
       libraryId || '',
@@ -438,7 +441,7 @@ export class SchedulerService {
    * Check for overdue jobs and trigger them
    */
   private async triggerOverdueJobs(): Promise<void> {
-    console.log('[Scheduler] Checking for overdue jobs...');
+    logger.info('Checking for overdue jobs...');
 
     const jobs = await prisma.scheduledJob.findMany({
       where: { enabled: true },
@@ -447,11 +450,11 @@ export class SchedulerService {
     for (const job of jobs) {
       try {
         if (this.isJobOverdue(job)) {
-          console.log(`[Scheduler] Job "${job.name}" is overdue, triggering now...`);
+          logger.info(`Job "${job.name}" is overdue, triggering now...`);
           await this.triggerJobNow(job.id);
         }
       } catch (error) {
-        console.error(`[Scheduler] Failed to trigger overdue job "${job.name}":`, error);
+        logger.error(`Failed to trigger overdue job "${job.name}"`, { error: error instanceof Error ? error.message : String(error) });
       }
     }
   }
@@ -468,7 +471,7 @@ export class SchedulerService {
     // Parse cron expression to get interval in milliseconds
     const intervalMs = this.getIntervalFromCron(job.schedule);
     if (!intervalMs) {
-      console.warn(`[Scheduler] Could not parse interval for job "${job.name}", skipping`);
+      logger.warn(`Could not parse interval for job "${job.name}", skipping`);
       return false;
     }
 
@@ -530,7 +533,7 @@ export class SchedulerService {
     }
 
     // For other patterns, return a conservative default (24 hours)
-    console.warn(`[Scheduler] Unknown cron pattern "${cronExpression}", defaulting to 24 hours`);
+    logger.warn(`Unknown cron pattern "${cronExpression}", defaulting to 24 hours`);
     return 24 * 60 * 60 * 1000;
   }
 

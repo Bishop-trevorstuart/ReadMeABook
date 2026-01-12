@@ -5,6 +5,9 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { getConfigService } from '@/lib/services/config.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Config.Category');
 
 // GET /api/config/:category - Get all config for a category
 export async function GET(
@@ -23,7 +26,7 @@ export async function GET(
       config,
     });
   } catch (error) {
-    console.error(`Failed to get config for category:`, error);
+    logger.error('Failed to get config for category', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'Failed to get configuration',

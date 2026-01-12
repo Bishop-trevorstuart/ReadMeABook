@@ -8,6 +8,9 @@ import path from 'path';
 import axios from 'axios';
 import { createJobLogger, JobLogger } from './job-logger';
 import { tagMultipleFiles, checkFfmpegAvailable } from './metadata-tagger';
+import { RMABLogger } from './logger';
+
+const moduleLogger = RMABLogger.create('FileOrganizer');
 import {
   detectChapterFiles,
   analyzeChapterFiles,
@@ -296,7 +299,7 @@ export class FileOrganizer {
         try {
           await fs.access(sourcePath, fs.constants.R_OK);
         } catch {
-          console.warn(`[FileOrganizer] Source file not found or not readable: ${sourcePath}`);
+          moduleLogger.warn(`Source file not found or not readable: ${sourcePath}`);
           result.errors.push(`Source file not found: ${audioFile}`);
           continue;
         }
@@ -304,7 +307,7 @@ export class FileOrganizer {
         // Check if target already exists (skip if already copied)
         try {
           await fs.access(targetFilePath);
-          console.log(`[FileOrganizer] File already exists, skipping: ${filename}`);
+          moduleLogger.debug(`File already exists, skipping: ${filename}`);
           result.audioFiles.push(targetFilePath);
 
           // Clean up tagged temp file if it exists
@@ -504,7 +507,7 @@ export class FileOrganizer {
         }
       }
     } catch (error) {
-      console.error('[FileOrganizer] Error reading directory:', error);
+      moduleLogger.error('Error reading directory', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
 
@@ -532,7 +535,7 @@ export class FileOrganizer {
         }
       }
     } catch (error) {
-      console.error(`[FileOrganizer] Error reading directory ${dir}:`, error);
+      moduleLogger.error(`Error reading directory ${dir}`, { error: error instanceof Error ? error.message : String(error) });
     }
 
     return files;
@@ -601,7 +604,7 @@ export class FileOrganizer {
         // Copy from local cache instead of downloading
         await fs.copyFile(cachedPath, targetPath);
         await fs.chmod(targetPath, 0o644);
-        console.log(`[FileOrganizer] Copied cover art from cache: ${filename}`);
+        moduleLogger.debug(`Copied cover art from cache: ${filename}`);
       } else {
         // Download from external URL (e.g., Audible CDN)
         const response = await axios.get(url, {
@@ -610,10 +613,10 @@ export class FileOrganizer {
         });
 
         await fs.writeFile(targetPath, response.data);
-        console.log(`[FileOrganizer] Downloaded cover art from URL`);
+        moduleLogger.debug(`Downloaded cover art from URL`);
       }
     } catch (error) {
-      console.error('[FileOrganizer] Failed to download cover art:', error);
+      moduleLogger.error('Failed to download cover art', { error: error instanceof Error ? error.message : String(error) });
       throw error;
     }
   }
@@ -625,9 +628,9 @@ export class FileOrganizer {
     try {
       // Remove download directory and all remaining files
       await fs.rm(downloadPath, { recursive: true, force: true });
-      console.log(`[FileOrganizer] Cleaned up: ${downloadPath}`);
+      moduleLogger.debug(`Cleaned up: ${downloadPath}`);
     } catch (error) {
-      console.error(`[FileOrganizer] Cleanup failed for ${downloadPath}:`, error);
+      moduleLogger.error(`Cleanup failed for ${downloadPath}`, { error: error instanceof Error ? error.message : String(error) });
       // Don't throw - cleanup is non-critical
     }
   }

@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.Prowlarr');
 
 export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -36,14 +39,14 @@ export async function PUT(request: NextRequest) {
           });
         }
 
-        console.log('[Admin] Prowlarr settings updated');
+        logger.info('Prowlarr settings updated');
 
         return NextResponse.json({
           success: true,
           message: 'Prowlarr settings updated successfully',
         });
       } catch (error) {
-        console.error('[Admin] Failed to update Prowlarr settings:', error);
+        logger.error('Failed to update Prowlarr settings', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

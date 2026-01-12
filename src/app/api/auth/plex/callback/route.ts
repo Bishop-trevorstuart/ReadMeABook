@@ -9,6 +9,9 @@ import { getEncryptionService } from '@/lib/services/encryption.service';
 import { getConfigService } from '@/lib/services/config.service';
 import { generateAccessToken, generateRefreshToken } from '@/lib/utils/jwt';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.PlexCallback');
 
 /**
  * GET /api/auth/plex/callback?pinId=12345
@@ -52,7 +55,7 @@ export async function GET(request: NextRequest) {
 
     // Validate user info
     if (!plexUser || !plexUser.id) {
-      console.error('[Plex OAuth] Invalid user info received:', plexUser);
+      logger.error('Invalid user info received', { plexUser });
       return NextResponse.json(
         {
           error: 'OAuthError',
@@ -64,7 +67,7 @@ export async function GET(request: NextRequest) {
     }
 
     if (!plexUser.username) {
-      console.error('[Plex OAuth] Username missing from Plex user:', plexUser);
+      logger.error('Username missing from Plex user', { plexUser });
       return NextResponse.json(
         {
           error: 'OAuthError',
@@ -84,7 +87,7 @@ export async function GET(request: NextRequest) {
 
     // Verify server is configured
     if (!plexConfig.serverUrl || !plexConfig.authToken) {
-      console.error('[Plex OAuth] Server not configured');
+      logger.error('Server not configured');
       return NextResponse.json(
         {
           error: 'ConfigurationError',
@@ -99,7 +102,7 @@ export async function GET(request: NextRequest) {
     const serverMachineId = plexConfig.machineIdentifier;
 
     if (!serverMachineId) {
-      console.error('[Plex OAuth] machineIdentifier not found in configuration');
+      logger.error('machineIdentifier not found in configuration');
       return NextResponse.json(
         {
           error: 'ConfigurationError',
@@ -109,7 +112,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('[Plex OAuth] Using stored machineIdentifier:', serverMachineId);
+    logger.debug('Using stored machineIdentifier', { serverMachineId });
 
     // SECURITY: Verify user has access to the configured Plex server
     // This checks if the server appears in the user's list of accessible servers from plex.tv
@@ -121,7 +124,7 @@ export async function GET(request: NextRequest) {
     );
 
     if (!hasAccess) {
-      console.warn('[Plex OAuth] User attempted to authenticate without server access:', {
+      logger.warn('User attempted to authenticate without server access', {
         plexId: plexIdString,
         username: plexUser.username,
         serverMachineId,
@@ -135,16 +138,16 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    console.log('[Plex OAuth] User verified with server access:', plexUser.username);
+    logger.info('User verified with server access', { username: plexUser.username });
 
     // Check for Plex Home profiles
     const homeUsers = await plexService.getHomeUsers(authToken);
-    console.log('[Plex OAuth] Found home users:', homeUsers.length);
+    logger.debug('Found home users', { count: homeUsers.length });
 
     // If multiple home users exist, redirect to profile selection
     // (Only show selection if there's more than just the main account)
     if (homeUsers.length > 1) {
-      console.log('[Plex OAuth] Account has multiple home profiles, redirecting to profile selection');
+      logger.info('Account has multiple home profiles, redirecting to profile selection');
 
       // Detect if this is a browser request (mobile redirect) vs AJAX (desktop popup polling)
       const accept = request.headers.get('accept') || '';
@@ -157,7 +160,7 @@ export async function GET(request: NextRequest) {
                         (process.env.NODE_ENV === 'production' ? 'https' : 'http');
         const selectProfileUrl = `${protocol}://${host}/auth/select-profile?pinId=${pinId}`;
 
-        console.log('[Plex OAuth] Redirecting to profile selection:', selectProfileUrl);
+        logger.debug('Redirecting to profile selection', { selectProfileUrl });
 
         // Return HTML page with JavaScript to store token in sessionStorage and redirect
         const html = `
@@ -197,7 +200,7 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    console.log('[Plex OAuth] Single profile or no additional profiles, continuing with main account authentication');
+    logger.debug('Single profile or no additional profiles, continuing with main account authentication');
 
     // No home users - continue with normal authentication flow using main account
     // Check if this is the first user (should be promoted to admin)
@@ -248,8 +251,8 @@ export async function GET(request: NextRequest) {
                       (process.env.NODE_ENV === 'production' ? 'https' : 'http');
       const redirectUrl = `${protocol}://${host}/login?auth=success`;
 
-      console.log('[Plex OAuth] Setting cookies for mobile auth...');
-      console.log('[Plex OAuth] Redirect URL:', redirectUrl);
+      logger.debug('Setting cookies for mobile auth');
+      logger.debug('Redirect URL', { redirectUrl });
 
       // Prepare user data
       const userDataJson = JSON.stringify({
@@ -260,7 +263,7 @@ export async function GET(request: NextRequest) {
         role: user.role,
         avatarUrl: user.avatarUrl,
       });
-      console.log('[Plex OAuth] Setting userData cookie:', userDataJson);
+      logger.debug('Setting userData cookie', { userDataJson });
 
       // Prepare auth data to pass via URL hash (fallback for mobile browsers that block cookies)
       const authData = {
@@ -331,7 +334,7 @@ export async function GET(request: NextRequest) {
         path: '/',
       });
 
-      console.log('[Plex OAuth] Cookies set successfully, returning HTML redirect to:', redirectUrl);
+      logger.debug('Cookies set successfully, returning HTML redirect', { redirectUrl });
       return response;
     }
 
@@ -351,7 +354,7 @@ export async function GET(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Failed to complete Plex OAuth:', error);
+    logger.error('Failed to complete Plex OAuth', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'OAuthError',

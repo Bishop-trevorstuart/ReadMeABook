@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireLocalAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import bcrypt from 'bcrypt';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.ChangePassword');
 
 /**
  * POST /api/admin/settings/change-password
@@ -114,14 +117,14 @@ export async function POST(request: NextRequest) {
           },
         });
 
-        console.log(`[Auth] Local admin password changed successfully for user ${user.id}`);
+        logger.info(`Local admin password changed successfully`, { userId: user.id });
 
         return NextResponse.json({
           success: true,
           message: 'Password changed successfully',
         });
       } catch (error) {
-        console.error('[Auth] Failed to change password:', error);
+        logger.error('Failed to change password', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

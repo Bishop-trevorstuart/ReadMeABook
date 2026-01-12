@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.Paths');
 
 export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -65,7 +68,7 @@ export async function PUT(request: NextRequest) {
           },
         });
 
-        console.log('[Admin] Paths settings updated');
+        logger.info('Paths settings updated');
 
         // Invalidate qBittorrent service singleton to force reload of download_dir
         const { invalidateQBittorrentService } = await import('@/lib/integrations/qbittorrent.service');
@@ -76,7 +79,7 @@ export async function PUT(request: NextRequest) {
           message: 'Paths settings updated successfully',
         });
       } catch (error) {
-        console.error('[Admin] Failed to update paths settings:', error);
+        logger.error('Failed to update paths settings', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

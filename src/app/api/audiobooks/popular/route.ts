@@ -9,6 +9,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { prisma } from '@/lib/db';
 import { enrichAudiobooksWithMatches } from '@/lib/utils/audiobook-matcher';
 import { getCurrentUser } from '@/lib/middleware/auth';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Audiobooks.Popular');
 
 /**
  * GET /api/audiobooks/popular?page=1&limit=20
@@ -128,7 +131,7 @@ export async function GET(request: NextRequest) {
       lastSync: audiobooks[0]?.lastSyncedAt?.toISOString() || null,
     });
   } catch (error) {
-    console.error('Failed to get popular audiobooks:', error);
+    logger.error('Failed to get popular audiobooks', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'FetchError',

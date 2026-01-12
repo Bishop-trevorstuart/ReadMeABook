@@ -55,6 +55,11 @@
 - **Scheduled/recurring jobs (cron)** → [backend/services/scheduler.md](backend/services/scheduler.md)
 - **Job types:** search, download monitor, organize, Plex scan, cleanup, retries
 
+## Logging
+- **Centralized logging (RMABLogger)** → [backend/services/logging.md](backend/services/logging.md)
+- **LOG_LEVEL configuration** → [backend/services/logging.md](backend/services/logging.md)
+- **Job-aware database persistence** → [backend/services/logging.md](backend/services/logging.md)
+
 ## Frontend Components
 - **Component catalog (cards, badges, forms)** → [frontend/components.md](frontend/components.md)
 - **RequestCard, StatusBadge, ProgressBar** → [frontend/components.md](frontend/components.md)
@@ -94,6 +99,7 @@
 **"OAuth redirects to localhost / PUBLIC_URL not working"** → [backend/services/environment.md](backend/services/environment.md)
 **"What environment variables do I need?"** → [backend/services/environment.md](backend/services/environment.md)
 **"How does chapter merging work?"** → [features/chapter-merging.md](features/chapter-merging.md)
+**"How does logging work?"** → [backend/services/logging.md](backend/services/logging.md)
 **"How does Audiobookshelf integration work?"** → [features/audiobookshelf-integration.md](features/audiobookshelf-integration.md) (PRD only, not implemented)
 **"How do I use OIDC/Authentik/Keycloak?"** → [features/audiobookshelf-integration.md](features/audiobookshelf-integration.md) (PRD only, not implemented)
 **"How does manual user registration work?"** → [features/audiobookshelf-integration.md](features/audiobookshelf-integration.md) (PRD only, not implemented)

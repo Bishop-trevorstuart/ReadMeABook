@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin } from '@/lib/middleware/auth';
 import { processScanPlex } from '@/lib/processors/scan-plex.processor';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Plex.Scan');
 
 /**
  * POST /api/admin/plex/scan
@@ -27,7 +30,7 @@ export async function POST(request: NextRequest) {
           ...result,
         });
       } catch (error) {
-        console.error('[API] Plex scan failed:', error);
+        logger.error('Plex scan failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             error: 'ScanFailed',

@@ -5,6 +5,10 @@
 
 import axios, { AxiosInstance } from 'axios';
 import { parseStringPromise } from 'xml2js';
+import { RMABLogger } from '../utils/logger';
+
+// Module-level logger
+const logger = RMABLogger.create('Plex');
 
 const PLEX_TV_API_BASE = 'https://plex.tv/api/v2';
 const PLEX_CLIENT_IDENTIFIER = process.env.PLEX_CLIENT_IDENTIFIER || 'readmeabook-unique-client-id';
@@ -106,7 +110,7 @@ export class PlexService {
         code: response.data.code,
       };
     } catch (error) {
-      console.error('Failed to request Plex PIN:', error);
+      logger.error('Failed to request PIN', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to request authentication PIN from Plex');
     }
   }
@@ -125,7 +129,7 @@ export class PlexService {
 
       return response.data.authToken || null;
     } catch (error) {
-      console.error('Failed to check Plex PIN:', error);
+      logger.error('Failed to check PIN', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -147,36 +151,36 @@ export class PlexService {
       // Handle different response formats from Plex
       if (typeof response.data === 'string') {
         // XML response - parse it
-        console.log('[Plex] Received XML response, parsing...');
+        logger.debug('Received XML response, parsing...');
         const parsed = await parseStringPromise(response.data);
 
         // XML attributes are in user.$
         if (parsed.user && parsed.user.$) {
           userData = parsed.user.$;
         } else {
-          console.error('[Plex] Unexpected XML structure:', parsed);
+          logger.error('Unexpected XML structure', { parsed });
           throw new Error('Unexpected XML structure in Plex response');
         }
       } else if (response.data && typeof response.data === 'object') {
         // JSON response
-        console.log('[Plex] Received JSON response');
+        logger.debug('Received JSON response');
         userData = response.data;
       } else {
-        console.error('[Plex] Unexpected response type:', typeof response.data);
+        logger.error('Unexpected response type', { type: typeof response.data });
         throw new Error('Unexpected response format from Plex');
       }
 
-      console.log('[Plex] Parsed user data:', JSON.stringify(userData, null, 2));
+      logger.debug('Parsed user data', { userData });
 
       // Validate required fields
       if (!userData.id) {
-        console.error('[Plex] User ID missing from parsed data:', userData);
+        logger.error('User ID missing from parsed data', { userData });
         throw new Error('User ID missing from Plex response');
       }
 
       const username = userData.username || userData.title;
       if (!username) {
-        console.error('[Plex] Username missing from parsed data:', userData);
+        logger.error('Username missing from parsed data', { userData });
         throw new Error('Username missing from Plex response');
       }
 
@@ -188,7 +192,7 @@ export class PlexService {
         authToken,
       };
     } catch (error) {
-      console.error('Failed to get Plex user info:', error);
+      logger.error('Failed to get user info', { error: error instanceof Error ? error.message : String(error) });
       if (error instanceof Error) {
         throw error; // Re-throw our custom errors
       }
@@ -237,7 +241,7 @@ export class PlexService {
         // else data is already the right format
       }
 
-      console.log('[Plex] Identity response:', JSON.stringify(data, null, 2));
+      logger.debug('Identity response', { data });
 
       const info: PlexServerInfo = {
         machineIdentifier: data.machineIdentifier || 'unknown',
@@ -252,7 +256,7 @@ export class PlexService {
         info,
       };
     } catch (error) {
-      console.error('Plex connection test failed:', error);
+      logger.error('Connection test failed', { error: error instanceof Error ? error.message : String(error) });
       return {
         success: false,
         message: 'Could not connect to Plex server. Check server URL and token.',
@@ -275,7 +279,7 @@ export class PlexService {
     userPlexToken: string
   ): Promise<string | null> {
     try {
-      console.log('[Plex] Fetching server access token for machineId:', serverMachineId);
+      logger.debug('Fetching server access token', { serverMachineId });
 
       // Get the list of servers/resources the user has access to
       const response = await this.client.get('https://plex.tv/api/v2/resources', {
@@ -300,20 +304,20 @@ export class PlexService {
       });
 
       if (!serverResource) {
-        console.warn('[Plex] User does not have access to server:', serverMachineId);
+        logger.warn('User does not have access to server', { serverMachineId });
         return null;
       }
 
       if (!serverResource.accessToken) {
-        console.error('[Plex] Server resource found but no accessToken provided');
+        logger.error('Server resource found but no accessToken provided');
         return null;
       }
 
-      console.log('[Plex] Found server access token for:', serverResource.name);
+      logger.debug('Found server access token', { serverName: serverResource.name });
       return serverResource.accessToken;
 
     } catch (error) {
-      console.error('[Plex] Failed to fetch server access token:', error);
+      logger.error('Failed to fetch server access token', { error: error instanceof Error ? error.message : String(error) });
       return null;
     }
   }
@@ -327,7 +331,7 @@ export class PlexService {
    */
   async verifyServerAccess(serverUrl: string, serverMachineId: string, userToken: string): Promise<boolean> {
     try {
-      console.log('[Plex] Verifying server access for machineId:', serverMachineId);
+      logger.debug('Verifying server access', { serverMachineId });
 
       // Get the list of servers/resources the user has access to
       const response = await this.client.get('https://plex.tv/api/v2/resources', {
@@ -344,21 +348,19 @@ export class PlexService {
       });
 
       const resources = response.data || [];
-      console.log('[Plex] User has access to', resources.length, 'resources');
+      logger.debug('User has access to resources', { count: resources.length });
 
       // Log all resources for debugging
-      console.log('[Plex] User accessible resources:', JSON.stringify(
-        resources.map((r: any) => ({
+      logger.debug('User accessible resources', {
+        resources: resources.map((r: any) => ({
           name: r.name,
           product: r.product,
           provides: r.provides,
           clientIdentifier: r.clientIdentifier,
           machineIdentifier: r.machineIdentifier,
           owned: r.owned,
-        })),
-        null,
-        2
-      ));
+        }))
+      });
 
       // Filter to only server resources (not clients like apps)
       const servers = resources.filter((r: any) =>
@@ -367,14 +369,14 @@ export class PlexService {
         (r.provides && r.provides.includes && r.provides.includes('server'))
       );
 
-      console.log('[Plex] Found', servers.length, 'server resources');
+      logger.debug('Found server resources', { count: servers.length });
 
       // Check if our server is in the list of accessible resources
       const hasAccess = servers.some((resource: any) => {
         const resourceId = resource.clientIdentifier || resource.machineIdentifier;
         const match = resourceId === serverMachineId;
 
-        console.log('[Plex] Comparing:', {
+        logger.debug('Comparing resource', {
           resourceId,
           serverMachineId,
           match,
@@ -382,7 +384,7 @@ export class PlexService {
         });
 
         if (match) {
-          console.log('[Plex] ✓ Found matching server:', {
+          logger.debug('Found matching server', {
             name: resource.name,
             machineId: resourceId,
             owned: resource.owned,
@@ -393,23 +395,23 @@ export class PlexService {
       });
 
       if (!hasAccess) {
-        console.warn('[Plex] ✗ Server not found in user\'s accessible resources');
-        console.warn('[Plex] Looking for machineId:', serverMachineId);
-        console.warn('[Plex] User has access to servers:',
-          servers.map((r: any) => ({
+        logger.warn('Server not found in user accessible resources', {
+          serverMachineId,
+          accessibleServers: servers.map((r: any) => ({
             name: r.name,
             clientId: r.clientIdentifier,
             machineId: r.machineIdentifier,
           }))
-        );
+        });
       }
 
       return hasAccess;
     } catch (error: any) {
-      console.error('[Plex] Failed to verify server access:', error.response?.status || error.message);
-      if (error.response?.data) {
-        console.error('[Plex] Error response:', error.response.data);
-      }
+      logger.error('Failed to verify server access', {
+        status: error.response?.status,
+        error: error.message,
+        responseData: error.response?.data
+      });
       return false;
     }
   }
@@ -456,7 +458,7 @@ export class PlexService {
 
       return libraries;
     } catch (error) {
-      console.error('Failed to get Plex libraries:', error);
+      logger.error('Failed to get libraries', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to retrieve libraries from Plex server');
     }
   }
@@ -488,27 +490,27 @@ export class PlexService {
         }
       );
 
-      console.log('[Plex] Recently added response type:', typeof response.data);
+      logger.debug('Recently added response type', { type: typeof response.data });
 
       // Handle XML response
       let data = response.data;
       if (typeof data === 'string') {
-        console.log('[Plex] Parsing XML response...');
+        logger.debug('Parsing XML response...');
         const parsed = await parseStringPromise(data);
         data = parsed.MediaContainer;
       } else if (data && typeof data === 'object') {
         // JSON response - could be wrapped in MediaContainer
         if (data.MediaContainer) {
-          console.log('[Plex] Extracting from MediaContainer wrapper');
+          logger.debug('Extracting from MediaContainer wrapper');
           data = data.MediaContainer;
         }
       }
 
       const tracks = data.Metadata || data.Track || data.Directory || data.Album || [];
-      console.log('[Plex] Found', Array.isArray(tracks) ? tracks.length : '(not an array)', 'recently added items');
+      logger.debug('Found recently added items', { count: Array.isArray(tracks) ? tracks.length : 'not an array' });
 
       if (!Array.isArray(tracks)) {
-        console.warn('[Plex] tracks is not an array:', tracks);
+        logger.warn('tracks is not an array', { tracks });
         return [];
       }
 
@@ -527,7 +529,7 @@ export class PlexService {
         userRating: item.userRating ? parseFloat(item.userRating) : (item.$?.userRating ? parseFloat(item.$?.userRating) : undefined),
       }));
     } catch (error) {
-      console.error('Failed to get recently added content:', error);
+      logger.error('Failed to get recently added content', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to retrieve recently added content from Plex library');
     }
   }
@@ -554,30 +556,29 @@ export class PlexService {
         }
       );
 
-      console.log('[Plex] Library content response type:', typeof response.data);
+      logger.debug('Library content response type', { type: typeof response.data });
 
       // Handle XML response
       let data = response.data;
       if (typeof data === 'string') {
-        console.log('[Plex] Parsing XML response...');
+        logger.debug('Parsing XML response...');
         const parsed = await parseStringPromise(data);
         data = parsed.MediaContainer;
       } else if (data && typeof data === 'object') {
         // JSON response - could be wrapped in MediaContainer
         if (data.MediaContainer) {
-          console.log('[Plex] Extracting from MediaContainer wrapper');
+          logger.debug('Extracting from MediaContainer wrapper');
           data = data.MediaContainer;
         }
       }
 
-      console.log('[Plex] Data structure keys:', Object.keys(data || {}));
-      console.log('[Plex] Looking for content in: Metadata, Track, Directory, Album');
+      logger.debug('Data structure', { keys: Object.keys(data || {}) });
 
       const tracks = data.Metadata || data.Track || data.Directory || data.Album || [];
-      console.log('[Plex] Found', Array.isArray(tracks) ? tracks.length : '(not an array)', 'items');
+      logger.debug('Found items', { count: Array.isArray(tracks) ? tracks.length : 'not an array' });
 
       if (!Array.isArray(tracks)) {
-        console.warn('[Plex] tracks is not an array:', tracks);
+        logger.warn('tracks is not an array', { tracks });
         return [];
       }
 
@@ -597,9 +598,9 @@ export class PlexService {
       }));
     } catch (error: any) {
       if (error?.response?.status === 401) {
-        console.error('[Plex] 401 Unauthorized when fetching library content - token may not have server access permissions');
+        logger.error('401 Unauthorized when fetching library content - token may not have server access permissions');
       } else {
-        console.error('[Plex] Failed to get library content:', error);
+        logger.error('Failed to get library content', { error: error instanceof Error ? error.message : String(error) });
       }
       throw new Error('Failed to retrieve content from Plex library');
     }
@@ -616,9 +617,9 @@ export class PlexService {
         },
       });
 
-      console.log(`Triggered Plex library scan for library ${libraryId}`);
+      logger.info(`Triggered library scan for library ${libraryId}`);
     } catch (error) {
-      console.error('Failed to trigger Plex scan:', error);
+      logger.error('Failed to trigger scan', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to trigger Plex library scan');
     }
   }
@@ -665,7 +666,7 @@ export class PlexService {
         updatedAt: item.updatedAt ? parseInt(item.updatedAt) : Date.now(),
       }));
     } catch (error) {
-      console.error('Failed to search Plex library:', error);
+      logger.error('Failed to search library', { error: error instanceof Error ? error.message : String(error) });
       return [];
     }
   }
@@ -717,15 +718,15 @@ export class PlexService {
     } catch (error: any) {
       // Handle 401 specifically (expired or invalid token)
       if (error.response?.status === 401) {
-        console.warn(`[Plex] User token unauthorized for ratingKey ${ratingKey} (token may be expired or invalid)`);
+        logger.warn('User token unauthorized', { ratingKey, reason: 'token may be expired or invalid' });
         return null;
       }
       // Handle 404 (item not found or user doesn't have access)
       if (error.response?.status === 404) {
-        console.warn(`[Plex] Item not found or no access: ratingKey ${ratingKey}`);
+        logger.warn('Item not found or no access', { ratingKey });
         return null;
       }
-      console.error(`[Plex] Failed to get metadata for ratingKey ${ratingKey}:`, error.message || error);
+      logger.error('Failed to get metadata', { ratingKey, error: error.message || String(error) });
       return null;
     }
   }
@@ -765,9 +766,9 @@ export class PlexService {
 
     // If we got many 401s, log a warning about token issues
     if (unauthorizedCount > 0) {
-      console.warn(`[Plex] ${unauthorizedCount} of ${ratingKeys.length} items returned 401 (user token may be expired or invalid)`);
+      logger.warn('Some rating requests failed with 401', { unauthorizedCount, totalCount: ratingKeys.length });
       if (unauthorizedCount === ratingKeys.length) {
-        console.error('[Plex] All rating requests failed with 401 - user needs to re-authenticate with Plex');
+        logger.error('All rating requests failed with 401 - user needs to re-authenticate');
       }
     }
 
@@ -780,7 +781,7 @@ export class PlexService {
    */
   async getHomeUsers(authToken: string): Promise<PlexHomeUser[]> {
     try {
-      console.log('[Plex] Fetching home users from plex.tv/api/home/users');
+      logger.debug('Fetching home users');
       const response = await this.client.get(
         'https://plex.tv/api/home/users',
         {
@@ -792,36 +793,36 @@ export class PlexService {
         }
       );
 
-      console.log('[Plex] Home users API response status:', response.status);
-      console.log('[Plex] Home users API response type:', typeof response.data);
+      logger.debug('Home users API response', { status: response.status, type: typeof response.data });
 
       // Handle XML response
       let data = response.data;
       if (typeof data === 'string') {
-        console.log('[Plex] Response is XML string, parsing...');
+        logger.debug('Response is XML string, parsing...');
         const parsed = await parseStringPromise(data);
         data = parsed;
-        console.log('[Plex] Parsed XML structure:', JSON.stringify(data, null, 2));
+        logger.debug('Parsed XML structure', { data });
       } else {
-        console.log('[Plex] Response is JSON, structure:', JSON.stringify(data, null, 2));
+        logger.debug('Response is JSON', { data });
       }
 
       // Extract users from response
       // Response structure: { home: { users: [{ user: {...} }] } } or similar
       const users: any[] = [];
 
-      console.log('[Plex] Checking for users in response...');
-      console.log('[Plex] data.MediaContainer exists?', !!data.MediaContainer);
-      console.log('[Plex] data.MediaContainer?.User exists?', !!data.MediaContainer?.User);
-      console.log('[Plex] data.home exists?', !!data.home);
-      console.log('[Plex] data.home?.users exists?', !!data.home?.users);
-      console.log('[Plex] data.users exists?', !!data.users);
+      logger.debug('Checking for users in response', {
+        hasMediaContainer: !!data.MediaContainer,
+        hasMediaContainerUser: !!data.MediaContainer?.User,
+        hasHome: !!data.home,
+        hasHomeUsers: !!data.home?.users,
+        hasUsers: !!data.users
+      });
 
       // Check for users in MediaContainer.User (XML response structure)
       if (data.MediaContainer?.User) {
-        console.log('[Plex] Found users in data.MediaContainer.User');
+        logger.debug('Found users in data.MediaContainer.User');
         const usersList = Array.isArray(data.MediaContainer.User) ? data.MediaContainer.User : [data.MediaContainer.User];
-        console.log('[Plex] usersList length:', usersList.length);
+        logger.debug('usersList length', { count: usersList.length });
         usersList.forEach((item: any) => {
           // XML parsed data has attributes in the $ property
           if (item.$) {
@@ -831,9 +832,9 @@ export class PlexService {
           }
         });
       } else if (data.home?.users) {
-        console.log('[Plex] Found users in data.home.users');
+        logger.debug('Found users in data.home.users');
         const usersList = Array.isArray(data.home.users) ? data.home.users : [data.home.users];
-        console.log('[Plex] usersList length:', usersList.length);
+        logger.debug('usersList length', { count: usersList.length });
         usersList.forEach((item: any) => {
           if (item.user) {
             users.push(item.user);
@@ -844,9 +845,9 @@ export class PlexService {
           }
         });
       } else if (data.users) {
-        console.log('[Plex] Found users in data.users');
+        logger.debug('Found users in data.users');
         const usersList = Array.isArray(data.users) ? data.users : [data.users];
-        console.log('[Plex] usersList length:', usersList.length);
+        logger.debug('usersList length', { count: usersList.length });
         usersList.forEach((item: any) => {
           if (item.user) {
             users.push(item.user);
@@ -857,14 +858,13 @@ export class PlexService {
           }
         });
       } else {
-        console.log('[Plex] No users found in expected locations. Full data structure:');
-        console.log(JSON.stringify(data, null, 2));
+        logger.debug('No users found in expected locations', { data });
       }
 
-      console.log('[Plex] Extracted', users.length, 'users from response');
+      logger.debug('Extracted users from response', { count: users.length });
 
       if (users.length === 0) {
-        console.warn('[Plex] No home users found - this account may not have a Plex Home setup');
+        logger.warn('No home users found - account may not have Plex Home setup');
         return [];
       }
 
@@ -898,11 +898,11 @@ export class PlexService {
         };
       });
     } catch (error: any) {
-      console.error('[Plex] Failed to get home users:', error.message || error);
-      if (error.response) {
-        console.error('[Plex] Error response status:', error.response.status);
-        console.error('[Plex] Error response data:', error.response.data);
-      }
+      logger.error('Failed to get home users', {
+        error: error.message || String(error),
+        status: error.response?.status,
+        responseData: error.response?.data
+      });
       // Return empty array if no home users (not an error condition)
       return [];
     }
@@ -958,7 +958,7 @@ export class PlexService {
       }
 
       if (!authenticationToken) {
-        console.error('[Plex] No authenticationToken found in switch response:', JSON.stringify(data, null, 2));
+        logger.error('No authenticationToken found in switch response', { data });
         return null;
       }
 
@@ -966,10 +966,10 @@ export class PlexService {
     } catch (error: any) {
       // Handle PIN errors specifically
       if (error.response?.status === 401) {
-        console.error('[Plex] Invalid PIN for profile');
+        logger.error('Invalid PIN for profile');
         throw new Error('Invalid PIN');
       }
-      console.error('[Plex] Failed to switch home user:', error);
+      logger.error('Failed to switch home user', { error: error instanceof Error ? error.message : String(error) });
       throw new Error('Failed to switch to selected profile');
     }
   }

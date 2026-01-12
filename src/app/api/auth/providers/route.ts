@@ -6,6 +6,9 @@
 import { NextResponse } from 'next/server';
 import { ConfigurationService } from '@/lib/services/config.service';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Auth.Providers');
 
 export async function GET() {
   try {
@@ -58,7 +61,7 @@ export async function GET() {
       });
     }
   } catch (error) {
-    console.error('[Auth] Failed to fetch auth providers:', error);
+    logger.error('Failed to fetch auth providers', { error: error instanceof Error ? error.message : String(error) });
     // Default to Plex mode if config can't be read
     const localLoginDisabled = process.env.DISABLE_LOCAL_LOGIN === 'true';
     return NextResponse.json({

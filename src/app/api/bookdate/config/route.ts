@@ -7,6 +7,9 @@ import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
 import { getEncryptionService } from '@/lib/services/encryption.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.BookDateConfig');
 
 // GET: Fetch global BookDate configuration (excluding API key)
 // Any authenticated user can check if BookDate is configured
@@ -24,7 +27,7 @@ async function getConfig(req: AuthenticatedRequest) {
 
     return NextResponse.json({ config: safeConfig });
   } catch (error: any) {
-    console.error('[BookDate] Get config error:', error);
+    logger.error('Get config error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Failed to fetch configuration' },
       { status: 500 }
@@ -129,7 +132,7 @@ async function saveConfig(req: AuthenticatedRequest) {
     });
 
   } catch (error: any) {
-    console.error('[BookDate] Save config error:', error);
+    logger.error('Save config error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Failed to save configuration' },
       { status: 500 }
@@ -162,7 +165,7 @@ async function deleteConfig(req: AuthenticatedRequest) {
     return NextResponse.json({ success: true });
 
   } catch (error: any) {
-    console.error('[BookDate] Delete config error:', error);
+    logger.error('Delete config error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Failed to delete configuration' },
       { status: 500 }

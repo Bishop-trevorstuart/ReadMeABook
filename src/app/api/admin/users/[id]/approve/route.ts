@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Users.Approve');
 
 export async function POST(
   request: NextRequest,
@@ -64,7 +67,7 @@ export async function POST(
           });
         }
       } catch (error) {
-        console.error('[Admin] Failed to approve/reject user:', error);
+        logger.error('Failed to approve/reject user', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           { error: 'Failed to process user approval' },
           { status: 500 }

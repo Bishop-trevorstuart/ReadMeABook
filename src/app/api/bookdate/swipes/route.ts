@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.BookDate.Swipes');
 
 // DELETE: Clear all users' swipe history (Admin only)
 async function clearSwipes(req: AuthenticatedRequest) {
@@ -16,7 +19,7 @@ async function clearSwipes(req: AuthenticatedRequest) {
     // Also clear all cached recommendations (since swipe history affects recommendations)
     await prisma.bookDateRecommendation.deleteMany({});
 
-    console.log('[BookDate] Admin cleared all swipe history and recommendations');
+    logger.info('Admin cleared all swipe history and recommendations');
 
     return NextResponse.json({
       success: true,
@@ -24,7 +27,7 @@ async function clearSwipes(req: AuthenticatedRequest) {
     });
 
   } catch (error: any) {
-    console.error('[BookDate] Clear swipes error:', error);
+    logger.error('Clear swipes error', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       { error: error.message || 'Failed to clear swipe history' },
       { status: 500 }

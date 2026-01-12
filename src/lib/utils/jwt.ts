@@ -4,6 +4,9 @@
  */
 
 import jwt from 'jsonwebtoken';
+import { RMABLogger } from './logger';
+
+const logger = RMABLogger.create('JWT');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'change-this-to-a-random-secret-key';
 const JWT_REFRESH_SECRET = process.env.JWT_REFRESH_SECRET || 'change-this-to-another-random-secret-key';
@@ -54,10 +57,7 @@ export function verifyAccessToken(token: string): TokenPayload | null {
     const decoded = jwt.verify(token, JWT_SECRET) as TokenPayload;
     return decoded;
   } catch (error) {
-    console.error('[JWT] Access token verification failed:', error);
-    if (error instanceof Error) {
-      console.error('[JWT] Error details:', error.message);
-    }
+    logger.error('Access token verification failed', { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }
@@ -73,7 +73,7 @@ export function verifyRefreshToken(token: string): RefreshTokenPayload | null {
     }
     return decoded;
   } catch (error) {
-    console.error('Refresh token verification failed:', error);
+    logger.error('Refresh token verification failed', { error: error instanceof Error ? error.message : String(error) });
     return null;
   }
 }

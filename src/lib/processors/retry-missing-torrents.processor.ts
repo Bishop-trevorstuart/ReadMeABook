@@ -6,7 +6,7 @@
  */
 
 import { prisma } from '../db';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 import { getJobQueueService } from '../services/job-queue.service';
 
 export interface RetryMissingTorrentsPayload {
@@ -16,9 +16,9 @@ export interface RetryMissingTorrentsPayload {
 
 export async function processRetryMissingTorrents(payload: RetryMissingTorrentsPayload): Promise<any> {
   const { jobId, scheduledJobId } = payload;
-  const logger = jobId ? createJobLogger(jobId, 'RetryMissingTorrents') : null;
+  const logger = RMABLogger.forJob(jobId, 'RetryMissingTorrents');
 
-  await logger?.info('Starting retry job for requests awaiting search...');
+  logger.info('Starting retry job for requests awaiting search...');
 
   try {
     // Find all active requests in awaiting_search status
@@ -33,7 +33,7 @@ export async function processRetryMissingTorrents(payload: RetryMissingTorrentsP
       take: 50, // Limit to 50 requests per run
     });
 
-    await logger?.info(`Found ${requests.length} requests awaiting search`);
+    logger.info(`Found ${requests.length} requests awaiting search`);
 
     if (requests.length === 0) {
       return {
@@ -55,13 +55,13 @@ export async function processRetryMissingTorrents(payload: RetryMissingTorrentsP
           author: request.audiobook.author,
         });
         triggered++;
-        await logger?.info(`Triggered search for request ${request.id}: ${request.audiobook.title}`);
+        logger.info(`Triggered search for request ${request.id}: ${request.audiobook.title}`);
       } catch (error) {
-        await logger?.error(`Failed to trigger search for request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+        logger.error(`Failed to trigger search for request ${request.id}: ${error instanceof Error ? error.message : 'Unknown error'}`);
       }
     }
 
-    await logger?.info(`Triggered ${triggered}/${requests.length} search jobs`);
+    logger.info(`Triggered ${triggered}/${requests.length} search jobs`);
 
     return {
       success: true,
@@ -70,7 +70,7 @@ export async function processRetryMissingTorrents(payload: RetryMissingTorrentsP
       triggered,
     };
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
     throw error;
   }
 }

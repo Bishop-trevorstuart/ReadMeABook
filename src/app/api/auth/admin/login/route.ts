@@ -8,6 +8,9 @@ import { prisma } from '@/lib/db';
 import bcrypt from 'bcrypt';
 import { generateAccessToken, generateRefreshToken } from '@/lib/utils/jwt';
 import { getEncryptionService } from '@/lib/services/encryption.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Auth.AdminLogin');
 
 /**
  * POST /api/auth/admin/login
@@ -58,7 +61,7 @@ export async function POST(request: NextRequest) {
       const decryptedHash = encryptionService.decrypt(user.authToken || '');
       passwordValid = await bcrypt.compare(password, decryptedHash);
     } catch (error) {
-      console.error('[AdminLogin] Password verification failed:', error);
+      logger.error('Password verification failed', { error: error instanceof Error ? error.message : String(error) });
       return NextResponse.json(
         {
           error: 'AuthenticationError',
@@ -109,7 +112,7 @@ export async function POST(request: NextRequest) {
       },
     });
   } catch (error) {
-    console.error('Failed to authenticate admin user:', error);
+    logger.error('Failed to authenticate admin user', { error: error instanceof Error ? error.message : String(error) });
     return NextResponse.json(
       {
         error: 'AuthenticationError',

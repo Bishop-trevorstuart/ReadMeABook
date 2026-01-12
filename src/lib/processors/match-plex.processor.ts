@@ -11,7 +11,7 @@ import { prisma } from '../db';
 import { getLibraryService } from '../services/library';
 import { compareTwoStrings } from 'string-similarity';
 import { getConfigService } from '../services/config.service';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 
 /**
  * Process match library job (DEPRECATED - use scan_library instead)
@@ -20,10 +20,10 @@ import { createJobLogger } from '../utils/job-logger';
 export async function processMatchPlex(payload: MatchPlexPayload): Promise<any> {
   const { requestId, audiobookId, title, author, jobId } = payload;
 
-  const logger = jobId ? createJobLogger(jobId, 'MatchLibrary') : null;
+  const logger = RMABLogger.forJob(jobId, 'MatchLibrary');
 
-  await logger?.warn('DEPRECATED: match_plex job is deprecated. Use scan_plex instead.');
-  await logger?.info(`Matching "${title}" by ${author} in library`);
+  logger.warn('DEPRECATED: match_plex job is deprecated. Use scan_plex instead.');
+  logger.info(`Matching "${title}" by ${author} in library`);
 
   try {
     // Get library service and configuration
@@ -31,7 +31,7 @@ export async function processMatchPlex(payload: MatchPlexPayload): Promise<any> 
     const libraryService = await getLibraryService();
     const backendMode = await configService.getBackendMode();
 
-    await logger?.info(`Backend mode: ${backendMode}`);
+    logger.info(`Backend mode: ${backendMode}`);
 
     // Get configured library ID
     const libraryId = backendMode === 'audiobookshelf'
@@ -45,10 +45,10 @@ export async function processMatchPlex(payload: MatchPlexPayload): Promise<any> 
     // Search library using abstraction layer
     const searchResults = await libraryService.searchItems(libraryId, title);
 
-    await logger?.info(`Found ${searchResults.length} results in library`);
+    logger.info(`Found ${searchResults.length} results in library`);
 
     if (searchResults.length === 0) {
-      await logger?.warn(`No matches found in library for "${title}"`);
+      logger.warn(`No matches found in library for "${title}"`);
 
       // Mark as completed anyway - the file is there, library just needs time to scan
       await prisma.request.update({
@@ -92,7 +92,7 @@ export async function processMatchPlex(payload: MatchPlexPayload): Promise<any> 
 
     const bestMatch = matches[0];
 
-    await logger?.info(`Best match: "${bestMatch.item.title}" by ${bestMatch.item.author || 'Unknown'}`, {
+    logger.info(`Best match: "${bestMatch.item.title}" by ${bestMatch.item.author || 'Unknown'}`, {
       score: Math.round(bestMatch.score * 100),
       titleScore: Math.round(bestMatch.titleScore * 100),
       authorScore: Math.round(bestMatch.authorScore * 100),
@@ -100,7 +100,7 @@ export async function processMatchPlex(payload: MatchPlexPayload): Promise<any> 
 
     // Accept match if score >= 70%
     if (bestMatch.score >= 0.7) {
-      await logger?.info(`Match accepted!`);
+      logger.info(`Match accepted!`);
 
       // Update audiobook with library item ID
       const updateData: any = {
@@ -144,7 +144,7 @@ export async function processMatchPlex(payload: MatchPlexPayload): Promise<any> 
         },
       };
     } else {
-      await logger?.warn(`Match score too low (${Math.round(bestMatch.score * 100)}%), but marking as completed anyway`);
+      logger.warn(`Match score too low (${Math.round(bestMatch.score * 100)}%), but marking as completed anyway`);
 
       // Mark as completed even if match is poor
       await prisma.request.update({
@@ -166,7 +166,7 @@ export async function processMatchPlex(payload: MatchPlexPayload): Promise<any> 
       };
     }
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
     // Don't fail the request - the files are organized correctly
     // Just log the error and mark as completed

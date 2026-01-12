@@ -6,6 +6,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { testFlareSolverrConnection } from '@/lib/services/ebook-scraper';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('API.Admin.Settings.TestFlareSolverr');
 
 export async function POST(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -31,7 +34,7 @@ export async function POST(request: NextRequest) {
 
         return NextResponse.json(result);
       } catch (error) {
-        console.error('FlareSolverr test failed:', error);
+        logger.error('FlareSolverr test failed', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(
           {
             success: false,

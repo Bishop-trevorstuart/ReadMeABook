@@ -7,7 +7,7 @@ import { SearchIndexersPayload, getJobQueueService } from '../services/job-queue
 import { prisma } from '../db';
 import { getProwlarrService } from '../integrations/prowlarr.service';
 import { getRankingAlgorithm } from '../utils/ranking-algorithm';
-import { createJobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
 
 /**
  * Process search indexers job
@@ -16,9 +16,9 @@ import { createJobLogger } from '../utils/job-logger';
 export async function processSearchIndexers(payload: SearchIndexersPayload): Promise<any> {
   const { requestId, audiobook, jobId } = payload;
 
-  const logger = jobId ? createJobLogger(jobId, 'SearchIndexers') : null;
+  const logger = RMABLogger.forJob(jobId, 'SearchIndexers');
 
-  await logger?.info(`Processing request ${requestId} for "${audiobook.title}"`);
+  logger.info(`Processing request ${requestId} for "${audiobook.title}"`);
 
   try {
     // Update request status to searching
@@ -56,7 +56,7 @@ export async function processSearchIndexers(payload: SearchIndexersPayload): Pro
     const flagConfigStr = await configService.get('indexer_flag_config');
     const flagConfigs = flagConfigStr ? JSON.parse(flagConfigStr) : [];
 
-    await logger?.info(`Searching ${enabledIndexerIds.length} enabled indexers`);
+    logger.info(`Searching ${enabledIndexerIds.length} enabled indexers`);
 
     // Get Prowlarr service
     const prowlarr = await getProwlarrService();
@@ -64,7 +64,7 @@ export async function processSearchIndexers(payload: SearchIndexersPayload): Pro
     // Build search query (title only - cast wide net, let ranking filter)
     const searchQuery = audiobook.title;
 
-    await logger?.info(`Searching for: "${searchQuery}"`);
+    logger.info(`Searching for: "${searchQuery}"`);
 
     // Search indexers - ONLY enabled ones
     const searchResults = await prowlarr.search(searchQuery, {
@@ -74,11 +74,11 @@ export async function processSearchIndexers(payload: SearchIndexersPayload): Pro
       indexerIds: enabledIndexerIds, // Filter by enabled indexers
     });
 
-    await logger?.info(`Found ${searchResults.length} raw results`);
+    logger.info(`Found ${searchResults.length} raw results`);
 
     if (searchResults.length === 0) {
       // No results found - queue for re-search instead of failing
-      await logger?.warn(`No torrents found for request ${requestId}, marking as awaiting_search`);
+      logger.warn(`No torrents found for request ${requestId}, marking as awaiting_search`);
 
       await prisma.request.update({
         where: { id: requestId },
@@ -117,14 +117,14 @@ export async function processSearchIndexers(payload: SearchIndexersPayload): Pro
       result.score >= 50 && result.finalScore < 50
     ).length;
 
-    await logger?.info(`Ranked ${rankedResults.length} results, ${filteredResults.length} above threshold (50/100 base + final)`);
+    logger.info(`Ranked ${rankedResults.length} results, ${filteredResults.length} above threshold (50/100 base + final)`);
     if (disqualifiedByNegativeBonus > 0) {
-      await logger?.info(`${disqualifiedByNegativeBonus} torrents disqualified by negative flag bonuses`);
+      logger.info(`${disqualifiedByNegativeBonus} torrents disqualified by negative flag bonuses`);
     }
 
     if (filteredResults.length === 0) {
       // No quality results found - queue for re-search instead of failing
-      await logger?.warn(`No quality matches found for request ${requestId} (all below 50/100), marking as awaiting_search`);
+      logger.warn(`No quality matches found for request ${requestId} (all below 50/100), marking as awaiting_search`);
 
       await prisma.request.update({
         where: { id: requestId },
@@ -148,38 +148,38 @@ export async function processSearchIndexers(payload: SearchIndexersPayload): Pro
 
     // Log top 3 results with detailed breakdown
     const top3 = filteredResults.slice(0, 3);
-    await logger?.info(`==================== RANKING DEBUG ====================`);
-    await logger?.info(`Requested Title: "${audiobook.title}"`);
-    await logger?.info(`Requested Author: "${audiobook.author}"`);
-    await logger?.info(`Top ${top3.length} results (out of ${filteredResults.length} above threshold):`);
-    await logger?.info(`--------------------------------------------------------`);
+    logger.info(`==================== RANKING DEBUG ====================`);
+    logger.info(`Requested Title: "${audiobook.title}"`);
+    logger.info(`Requested Author: "${audiobook.author}"`);
+    logger.info(`Top ${top3.length} results (out of ${filteredResults.length} above threshold):`);
+    logger.info(`--------------------------------------------------------`);
     for (let i = 0; i < top3.length; i++) {
       const result = top3[i];
-      await logger?.info(`${i + 1}. "${result.title}"`);
-      await logger?.info(`   Indexer: ${result.indexer}${result.indexerId ? ` (ID: ${result.indexerId})` : ''}`);
-      await logger?.info(``);
-      await logger?.info(`   Base Score: ${result.score.toFixed(1)}/100`);
-      await logger?.info(`   - Title/Author Match: ${result.breakdown.matchScore.toFixed(1)}/60`);
-      await logger?.info(`   - Format Quality: ${result.breakdown.formatScore.toFixed(1)}/25 (${result.format || 'unknown'})`);
-      await logger?.info(`   - Seeder Count: ${result.breakdown.seederScore.toFixed(1)}/15 (${result.seeders !== undefined ? result.seeders + ' seeders' : 'N/A for Usenet'})`);
-      await logger?.info(``);
-      await logger?.info(`   Bonus Points: +${result.bonusPoints.toFixed(1)}`);
+      logger.info(`${i + 1}. "${result.title}"`);
+      logger.info(`   Indexer: ${result.indexer}${result.indexerId ? ` (ID: ${result.indexerId})` : ''}`);
+      logger.info(``);
+      logger.info(`   Base Score: ${result.score.toFixed(1)}/100`);
+      logger.info(`   - Title/Author Match: ${result.breakdown.matchScore.toFixed(1)}/60`);
+      logger.info(`   - Format Quality: ${result.breakdown.formatScore.toFixed(1)}/25 (${result.format || 'unknown'})`);
+      logger.info(`   - Seeder Count: ${result.breakdown.seederScore.toFixed(1)}/15 (${result.seeders !== undefined ? result.seeders + ' seeders' : 'N/A for Usenet'})`);
+      logger.info(``);
+      logger.info(`   Bonus Points: +${result.bonusPoints.toFixed(1)}`);
       if (result.bonusModifiers.length > 0) {
         for (const mod of result.bonusModifiers) {
-          await logger?.info(`   - ${mod.reason}: +${mod.points.toFixed(1)}`);
+          logger.info(`   - ${mod.reason}: +${mod.points.toFixed(1)}`);
         }
       }
-      await logger?.info(``);
-      await logger?.info(`   Final Score: ${result.finalScore.toFixed(1)}`);
+      logger.info(``);
+      logger.info(`   Final Score: ${result.finalScore.toFixed(1)}`);
       if (result.breakdown.notes.length > 0) {
-        await logger?.info(`   Notes: ${result.breakdown.notes.join(', ')}`);
+        logger.info(`   Notes: ${result.breakdown.notes.join(', ')}`);
       }
       if (i < top3.length - 1) {
-        await logger?.info(`--------------------------------------------------------`);
+        logger.info(`--------------------------------------------------------`);
       }
     }
-    await logger?.info(`========================================================`);
-    await logger?.info(`Selected best result: ${bestResult.title} (final score: ${bestResult.finalScore.toFixed(1)})`);
+    logger.info(`========================================================`);
+    logger.info(`Selected best result: ${bestResult.title} (final score: ${bestResult.finalScore.toFixed(1)})`);
 
     // Trigger download job with best result
     const jobQueue = getJobQueueService();
@@ -202,7 +202,7 @@ export async function processSearchIndexers(payload: SearchIndexersPayload): Pro
       },
     };
   } catch (error) {
-    await logger?.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    logger.error(`Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
 
     await prisma.request.update({
       where: { id: requestId },

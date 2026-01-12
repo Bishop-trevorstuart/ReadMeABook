@@ -8,6 +8,10 @@ import * as cheerio from 'cheerio';
 import fs from 'fs/promises';
 import path from 'path';
 import { JobLogger } from '../utils/job-logger';
+import { RMABLogger } from '../utils/logger';
+
+// Module-level logger (renamed to avoid shadowing function parameter 'logger')
+const moduleLogger = RMABLogger.create('EbookScraper');
 
 export interface EbookDownloadResult {
   success: boolean;
@@ -22,9 +26,6 @@ const DOWNLOAD_TIMEOUT_MS = 60000; // 60 seconds per download attempt
 const MAX_SLOW_LINK_ATTEMPTS = 5;
 const MAX_RETRIES = 3;
 const FLARESOLVERR_TIMEOUT_MS = 60000; // 60 seconds for FlareSolverr requests
-
-// Debug logging
-const DEBUG_ENABLED = process.env.LOG_LEVEL === 'debug';
 
 // In-memory cache for MD5 lookups (prevents re-scraping same ASIN)
 const md5Cache = new Map<string, string | null>();
@@ -94,13 +95,9 @@ async function fetchHtml(
   // Try FlareSolverr first if configured
   if (flaresolverrUrl) {
     try {
-      if (DEBUG_ENABLED) {
-        console.log(`[EbookScraper] Using FlareSolverr for: ${url}`);
-      }
+      moduleLogger.debug(`Using FlareSolverr for: ${url}`);
       const html = await fetchViaFlareSolverr(url, flaresolverrUrl);
-      if (DEBUG_ENABLED) {
-        console.log(`[EbookScraper] FlareSolverr returned HTML length: ${html.length}`);
-      }
+      moduleLogger.debug(`FlareSolverr returned HTML length: ${html.length}`);
       return html;
     } catch (error) {
       await logger?.warn(
@@ -108,17 +105,13 @@ async function fetchHtml(
           error instanceof Error ? error.message : 'Unknown error'
         }`
       );
-      if (DEBUG_ENABLED) {
-        console.log(`[EbookScraper] FlareSolverr error:`, error);
-      }
+      moduleLogger.debug('FlareSolverr error', { error: error instanceof Error ? error.message : String(error) });
       // Fall through to direct request
     }
   }
 
   // Direct request (may fail with Cloudflare protection)
-  if (DEBUG_ENABLED) {
-    console.log(`[EbookScraper] Using direct request for: ${url}`);
-  }
+  moduleLogger.debug(`Using direct request for: ${url}`);
   const response = await retryRequest(() =>
     axios.get(url, {
       headers: { 'User-Agent': USER_AGENT },
@@ -126,9 +119,7 @@ async function fetchHtml(
     })
   );
 
-  if (DEBUG_ENABLED) {
-    console.log(`[EbookScraper] Direct request returned data length: ${response.data?.length || 0}`);
-  }
+  moduleLogger.debug(`Direct request returned data length: ${response.data?.length || 0}`);
 
   return response.data;
 }
@@ -337,9 +328,7 @@ async function searchByAsin(
     const formatParam = format && format !== 'any' ? `ext=${format}&` : '';
     const searchUrl = `${baseUrl}/search?${formatParam}q=%22asin:${asin}%22`;
 
-    if (DEBUG_ENABLED) {
-      console.log(`[EbookScraper] ASIN search URL: ${searchUrl}`);
-    }
+    moduleLogger.debug(`ASIN search URL: ${searchUrl}`);
 
     const html = await fetchHtml(searchUrl, flaresolverrUrl, logger);
     const $ = cheerio.load(html);
@@ -358,26 +347,24 @@ async function searchByAsin(
       return true;
     });
 
-    if (DEBUG_ENABLED) {
-      console.log(`[EbookScraper] ASIN search HTML length: ${html.length}`);
-      // Log the page title to see what we got
-      const pageTitle = $('title').text();
-      console.log(`[EbookScraper] ASIN search page title: ${pageTitle}`);
-      // Count how many md5 links we found (excluding recent downloads)
-      const allMd5Links = $('a[href*="/md5/"]').length;
-      console.log(`[EbookScraper] Total MD5 links on page: ${allMd5Links}, search results only: ${searchResultLinks.length}`);
-    }
+    // Debug logging for ASIN search
+    const pageTitle = $('title').text();
+    const allMd5Links = $('a[href*="/md5/"]').length;
+    moduleLogger.debug('ASIN search results', {
+      htmlLength: html.length,
+      pageTitle,
+      totalMd5Links: allMd5Links,
+      searchResultLinks: searchResultLinks.length
+    });
 
     // Extract MD5 from first search result link
     const firstResult = searchResultLinks.first();
     const href = firstResult.attr('href');
 
-    if (DEBUG_ENABLED && firstResult.length > 0) {
-      // Try to get the text/title of the first result
+    if (firstResult.length > 0) {
       const resultText = firstResult.text().trim().substring(0, 100);
       const parentText = firstResult.parent().text().trim().substring(0, 100);
-      console.log(`[EbookScraper] First result link text: "${resultText}"`);
-      console.log(`[EbookScraper] First result parent text: "${parentText}"`);
+      moduleLogger.debug('First result details', { resultText, parentText });
     }
 
     if (!href) {
@@ -390,9 +377,7 @@ async function searchByAsin(
     const md5Match = href.match(/\/md5\/([a-f0-9]+)/);
     const md5 = md5Match ? md5Match[1] : null;
 
-    if (DEBUG_ENABLED) {
-      console.log(`[EbookScraper] Extracted MD5 from ASIN search: ${md5}`);
-    }
+    moduleLogger.debug(`Extracted MD5 from ASIN search: ${md5}`);
 
     // Cache result
     md5Cache.set(cacheKey, md5);
@@ -451,9 +436,7 @@ async function searchByTitle(
     // Empty raw query (we're using specific terms instead)
     searchUrl += '&q=';
 
-    if (DEBUG_ENABLED) {
-      console.log(`[EbookScraper] Title search URL: ${searchUrl}`);
-    }
+    moduleLogger.debug(`Title search URL: ${searchUrl}`);
 
     const html = await fetchHtml(searchUrl, flaresolverrUrl, logger);
     const $ = cheerio.load(html);
@@ -471,10 +454,8 @@ async function searchByTitle(
       return true;
     });
 
-    if (DEBUG_ENABLED) {
-      const allMd5Links = $('a[href*="/md5/"]').length;
-      console.log(`[EbookScraper] Title search: Total MD5 links: ${allMd5Links}, search results only: ${searchResultLinks.length}`);
-    }
+    const allMd5Links = $('a[href*="/md5/"]').length;
+    moduleLogger.debug('Title search results', { totalMd5Links: allMd5Links, searchResultLinks: searchResultLinks.length });
 
     // Extract MD5 from first search result link
     const firstResult = searchResultLinks.first();
@@ -516,44 +497,35 @@ async function getSlowDownloadLinks(
   try {
     const md5Url = `${baseUrl}/md5/${md5}`;
 
-    if (DEBUG_ENABLED) {
-      console.log(`[EbookScraper] Fetching MD5 page: ${md5Url}`);
-    }
+    moduleLogger.debug(`Fetching MD5 page: ${md5Url}`);
 
     const html = await fetchHtml(md5Url, flaresolverrUrl, logger);
 
-    if (DEBUG_ENABLED) {
-      console.log(`[EbookScraper] HTML length: ${html.length}`);
-      console.log(`[EbookScraper] HTML preview (first 500 chars): ${html.substring(0, 500)}`);
-      // Check if we got a Cloudflare challenge page
-      if (html.includes('challenge-running') || html.includes('cf-browser-verification')) {
-        console.log(`[EbookScraper] WARNING: Appears to be Cloudflare challenge page!`);
-      }
+    moduleLogger.debug('MD5 page HTML', { length: html.length, preview: html.substring(0, 500) });
+    // Check if we got a Cloudflare challenge page
+    if (html.includes('challenge-running') || html.includes('cf-browser-verification')) {
+      moduleLogger.warn('Appears to be Cloudflare challenge page');
     }
 
     const $ = cheerio.load(html);
     const slowLinks: string[] = [];
 
     // Debug: count all links
-    if (DEBUG_ENABLED) {
-      const allLinks = $('a').length;
-      const slowDownloadLinks = $('a[href*="/slow_download/"]').length;
-      const slowDownloadLinksAlt = $('a[href*="slow_download"]').length;
-      console.log(`[EbookScraper] Total links on page: ${allLinks}`);
-      console.log(`[EbookScraper] Links with /slow_download/: ${slowDownloadLinks}`);
-      console.log(`[EbookScraper] Links with slow_download (no slashes): ${slowDownloadLinksAlt}`);
+    const allLinks = $('a').length;
+    const slowDownloadLinks = $('a[href*="/slow_download/"]').length;
+    const slowDownloadLinksAlt = $('a[href*="slow_download"]').length;
+    moduleLogger.debug('Link counts on page', { allLinks, slowDownloadLinks, slowDownloadLinksAlt });
 
-      // Log all href patterns to see what we're dealing with
-      const hrefPatterns: string[] = [];
-      $('a[href]').each((i, elem) => {
-        const href = $(elem).attr('href') || '';
-        if (href.includes('download') || href.includes('slow')) {
-          hrefPatterns.push(href.substring(0, 100));
-        }
-      });
-      if (hrefPatterns.length > 0) {
-        console.log(`[EbookScraper] Download-related hrefs found:`, hrefPatterns.slice(0, 10));
+    // Log all href patterns to see what we're dealing with
+    const hrefPatterns: string[] = [];
+    $('a[href]').each((i, elem) => {
+      const href = $(elem).attr('href') || '';
+      if (href.includes('download') || href.includes('slow')) {
+        hrefPatterns.push(href.substring(0, 100));
       }
+    });
+    if (hrefPatterns.length > 0) {
+      moduleLogger.debug('Download-related hrefs found', { hrefs: hrefPatterns.slice(0, 10) });
     }
 
     // Find all slow download links
@@ -563,28 +535,21 @@ async function getSlowDownloadLinks(
       // e.g., <li><a>Slow Partner Server #5</a> (no waitlist, but can be very slow)</li>
       const parentText = $(elem).parent().text().toLowerCase();
 
-      if (DEBUG_ENABLED) {
-        const href = $(elem).attr('href');
-        console.log(`[EbookScraper] Found slow_download link: href="${href}", linkText="${linkText.substring(0, 30)}", parentText="${parentText.substring(0, 60)}"`);
-      }
+      const href = $(elem).attr('href');
+      moduleLogger.debug('Found slow_download link', { href, linkText: linkText.substring(0, 30), parentText: parentText.substring(0, 60) });
 
       // Check for "no waitlist" in either the link text or parent text
       if (linkText.includes('no waitlist') || parentText.includes('no waitlist')) {
-        const href = $(elem).attr('href');
         if (href) {
           // Convert relative URL to absolute
           const fullUrl = href.startsWith('http') ? href : `${baseUrl}${href}`;
           slowLinks.push(fullUrl);
-          if (DEBUG_ENABLED) {
-            console.log(`[EbookScraper] Added slow link (no waitlist): ${fullUrl}`);
-          }
+          moduleLogger.debug(`Added slow link (no waitlist): ${fullUrl}`);
         }
       }
     });
 
-    if (DEBUG_ENABLED) {
-      console.log(`[EbookScraper] Total slow links found: ${slowLinks.length}`);
-    }
+    moduleLogger.debug(`Total slow links found: ${slowLinks.length}`);
 
     await delay(REQUEST_DELAY_MS);
     return slowLinks;
@@ -592,9 +557,7 @@ async function getSlowDownloadLinks(
     await logger?.error(
       `Failed to get slow links: ${error instanceof Error ? error.message : 'Unknown error'}`
     );
-    if (DEBUG_ENABLED) {
-      console.log(`[EbookScraper] Error getting slow links:`, error);
-    }
+    moduleLogger.debug('Error getting slow links', { error: error instanceof Error ? error.message : String(error) });
     return [];
   }
 }
