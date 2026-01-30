@@ -17,7 +17,7 @@ export async function GET(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
     return requireAdmin(req, async () => {
       try {
-        // Get active downloads with related data
+        // Get active downloads with related data (both audiobook and ebook)
     const activeDownloads = await prisma.request.findMany({
       where: {
         status: 'downloading',
@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
       select: {
         id: true,
         status: true,
+        type: true, // 'audiobook' or 'ebook'
         progress: true,
         updatedAt: true,
         audiobook: {
@@ -54,6 +55,8 @@ export async function GET(request: NextRequest) {
             torrentName: true,
             torrentHash: true,
             nzbId: true,
+            downloadClient: true, // qbittorrent, sabnzbd, or direct
+            torrentSizeBytes: true,
             startedAt: true,
             createdAt: true,
           },
@@ -75,19 +78,38 @@ export async function GET(request: NextRequest) {
         let speed = 0;
         let eta: number | null = null;
 
+        const downloadHistory = download.downloadHistory[0];
+        const downloadClient = downloadHistory?.downloadClient;
+
         try {
-          if (clientType === 'qbittorrent') {
+          if (downloadClient === 'direct') {
+            // Direct HTTP download (ebooks) - estimate speed from progress and time elapsed
+            const startedAt = downloadHistory?.startedAt || downloadHistory?.createdAt;
+            const totalSize = downloadHistory?.torrentSizeBytes ? Number(downloadHistory.torrentSizeBytes) : 0;
+
+            if (startedAt && download.progress > 0 && totalSize > 0) {
+              const elapsedMs = Date.now() - new Date(startedAt).getTime();
+              const elapsedSeconds = elapsedMs / 1000;
+              const bytesDownloaded = (download.progress / 100) * totalSize;
+
+              if (elapsedSeconds > 0) {
+                speed = Math.round(bytesDownloaded / elapsedSeconds);
+                const remainingBytes = totalSize - bytesDownloaded;
+                eta = speed > 0 ? Math.round(remainingBytes / speed) : null;
+              }
+            }
+          } else if (downloadClient === 'qbittorrent' || (!downloadClient && clientType === 'qbittorrent')) {
             // Get torrent hash from download history
-            const torrentHash = download.downloadHistory[0]?.torrentHash;
+            const torrentHash = downloadHistory?.torrentHash;
             if (torrentHash) {
               const qbService = await getQBittorrentService();
               const torrentInfo = await qbService.getTorrent(torrentHash);
               speed = torrentInfo.dlspeed;
               eta = torrentInfo.eta > 0 ? torrentInfo.eta : null;
             }
-          } else if (clientType === 'sabnzbd') {
+          } else if (downloadClient === 'sabnzbd' || (!downloadClient && clientType === 'sabnzbd')) {
             // Get NZB ID from download history
-            const nzbId = download.downloadHistory[0]?.nzbId;
+            const nzbId = downloadHistory?.nzbId;
             if (nzbId) {
               const sabnzbdService = await getSABnzbdService();
               const nzbInfo = await sabnzbdService.getNZB(nzbId);
@@ -107,13 +129,14 @@ export async function GET(request: NextRequest) {
           title: download.audiobook.title,
           author: download.audiobook.author,
           status: download.status,
+          type: download.type, // 'audiobook' or 'ebook'
           progress: download.progress,
           speed,
           eta,
-          torrentName: download.downloadHistory[0]?.torrentName || null,
-          downloadStatus: download.downloadHistory[0]?.downloadStatus || null,
+          torrentName: downloadHistory?.torrentName || null,
+          downloadStatus: downloadHistory?.downloadStatus || null,
           user: download.user.plexUsername,
-          startedAt: download.downloadHistory[0]?.startedAt || download.downloadHistory[0]?.createdAt || download.updatedAt,
+          startedAt: downloadHistory?.startedAt || downloadHistory?.createdAt || download.updatedAt,
         };
       })
     );

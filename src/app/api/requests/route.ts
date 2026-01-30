@@ -45,13 +45,14 @@ export async function POST(request: NextRequest) {
       const body = await req.json();
       const { audiobook } = CreateRequestSchema.parse(body);
 
-      // First check: Is there an existing request in 'downloaded' or 'available' status?
+      // First check: Is there an existing audiobook request in 'downloaded' or 'available' status?
       // This catches the gap where files are organized but Plex hasn't scanned yet
       const existingActiveRequest = await prisma.request.findFirst({
         where: {
           audiobook: {
             audibleAsin: audiobook.asin,
           },
+          type: 'audiobook', // Only check audiobook requests (ebook requests are separate)
           status: { in: ['downloaded', 'available'] },
           deletedAt: null,
         },
@@ -165,11 +166,12 @@ export async function POST(request: NextRequest) {
         logger.debug(`Updated audiobook ${audiobookRecord.id} with year: ${year || 'unchanged'}, series: ${series || 'unchanged'}`);
       }
 
-      // Check if user already has an active (non-deleted) request for this audiobook
+      // Check if user already has an active (non-deleted) audiobook request for this audiobook
       const existingRequest = await prisma.request.findFirst({
         where: {
           userId: req.user.id,
           audiobookId: audiobookRecord.id,
+          type: 'audiobook', // Only check audiobook requests (ebook requests are separate)
           deletedAt: null, // Only check active requests
         },
       });
@@ -257,6 +259,7 @@ export async function POST(request: NextRequest) {
           userId: req.user.id,
           audiobookId: audiobookRecord.id,
           status: initialStatus,
+          type: 'audiobook', // Explicit type for user-created requests
           progress: 0,
         },
         include: {
@@ -353,6 +356,7 @@ export async function GET(request: NextRequest) {
       const status = searchParams.get('status');
       const limit = parseInt(searchParams.get('limit') || '50', 10);
       const myOnly = searchParams.get('myOnly') === 'true';
+      const type = searchParams.get('type'); // 'audiobook', 'ebook', or null for all
       const isAdmin = req.user.role === 'admin';
 
       // Build query
@@ -361,6 +365,10 @@ export async function GET(request: NextRequest) {
       const where: any = myOnly || !isAdmin ? { userId: req.user.id } : {};
       if (status) {
         where.status = status;
+      }
+      // Filter by type if specified (otherwise returns all types)
+      if (type && ['audiobook', 'ebook'].includes(type)) {
+        where.type = type;
       }
       // Only show active (non-deleted) requests
       where.deletedAt = null;

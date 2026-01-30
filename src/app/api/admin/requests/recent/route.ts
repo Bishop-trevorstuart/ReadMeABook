@@ -55,6 +55,7 @@ export async function GET(request: NextRequest) {
       title: request.audiobook.title,
       author: request.audiobook.author,
       status: request.status,
+      type: request.type, // 'audiobook' or 'ebook'
       user: request.user.plexUsername,
       createdAt: request.createdAt,
       completedAt: request.completedAt,

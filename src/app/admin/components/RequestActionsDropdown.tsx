@@ -18,6 +18,7 @@ export interface RequestActionsDropdownProps {
     title: string;
     author: string;
     status: string;
+    type?: 'audiobook' | 'ebook';
     torrentUrl?: string | null;
   };
   onDelete: (requestId: string, title: string) => void;
@@ -41,15 +42,41 @@ export function RequestActionsDropdown({
   const [showInteractiveSearch, setShowInteractiveSearch] = useState(false);
   const { containerRef, dropdownRef, positionAbove, style } = useSmartDropdownPosition(isOpen);
 
-  // Determine available actions based on status
-  const canSearch = ['pending', 'failed', 'awaiting_search'].includes(request.status);
+  // Determine request type
+  const isEbook = request.type === 'ebook';
+
+  // Determine available actions based on status and type
+  // Ebooks don't support manual/interactive search (Anna's Archive only)
+  const canSearch = !isEbook && ['pending', 'failed', 'awaiting_search'].includes(request.status);
   const canCancel = ['pending', 'searching', 'downloading'].includes(request.status);
   const canDelete = true; // Admins can always delete
-  // Only show "View Source" if we have a valid indexer page URL (not a magnet link)
-  const canViewSource = !!request.torrentUrl &&
-    !request.torrentUrl.startsWith('magnet:') &&
+
+  // View Source: For ebooks, extract MD5 from slow download URL and link to Anna's Archive
+  // For audiobooks, show indexer page URL (not magnet links)
+  let viewSourceUrl: string | null = null;
+  if (isEbook && request.torrentUrl) {
+    // torrentUrl for ebooks is JSON array of slow download URLs
+    // Extract MD5 from URL pattern: /slow_download/[md5]/...
+    try {
+      const urls = JSON.parse(request.torrentUrl);
+      if (Array.isArray(urls) && urls.length > 0) {
+        const md5Match = urls[0].match(/\/slow_download\/([a-f0-9]{32})\//i);
+        if (md5Match) {
+          viewSourceUrl = `https://annas-archive.li/md5/${md5Match[1]}`;
+        }
+      }
+    } catch {
+      // Not JSON, ignore
+    }
+  } else if (request.torrentUrl && !request.torrentUrl.startsWith('magnet:')) {
+    viewSourceUrl = request.torrentUrl;
+  }
+
+  const canViewSource = !!viewSourceUrl &&
     ['downloading', 'processing', 'downloaded', 'available'].includes(request.status);
-  const canFetchEbook = ebookSidecarEnabled && ['downloaded', 'available'].includes(request.status);
+
+  // "Try to fetch Ebook" only for audiobook requests
+  const canFetchEbook = !isEbook && ebookSidecarEnabled && ['downloaded', 'available'].includes(request.status);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -166,9 +193,9 @@ export function RequestActionsDropdown({
             )}
 
             {/* View Source */}
-            {canViewSource && (
+            {canViewSource && viewSourceUrl && (
               <a
-                href={request.torrentUrl!}
+                href={viewSourceUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 onClick={() => setIsOpen(false)}

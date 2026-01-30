@@ -304,8 +304,9 @@ export async function downloadEbook(
 
 /**
  * Step 1: Search Anna's Archive by ASIN and extract MD5 hash
+ * Exported for use by search-ebook processor
  */
-async function searchByAsin(
+export async function searchByAsin(
   asin: string,
   format: string,
   baseUrl: string,
@@ -394,8 +395,9 @@ async function searchByAsin(
 
 /**
  * Search Anna's Archive by title and author (fallback method)
+ * Exported for use by search-ebook processor
  */
-async function searchByTitle(
+export async function searchByTitle(
   title: string,
   author: string,
   format: string,
@@ -486,8 +488,9 @@ async function searchByTitle(
 
 /**
  * Step 3: Get slow download links from MD5 page (no waitlist only)
+ * Exported for use by search-ebook processor
  */
-async function getSlowDownloadLinks(
+export async function getSlowDownloadLinks(
   md5: string,
   baseUrl: string,
   logger?: RMABLogger,
@@ -561,7 +564,7 @@ async function getSlowDownloadLinks(
   }
 }
 
-interface ExtractedDownload {
+export interface ExtractedDownload {
   url: string;
   format: string;
 }
@@ -570,8 +573,9 @@ interface ExtractedDownload {
  * Step 4: Extract actual download URL from slow download page
  * IMPORTANT: Supports dynamic file formats (not hardcoded to .epub)
  * Returns both URL and detected format
+ * Exported for use by direct-download processor
  */
-async function extractDownloadUrl(
+export async function extractDownloadUrl(
   slowDownloadUrl: string,
   baseUrl: string,
   format: string,

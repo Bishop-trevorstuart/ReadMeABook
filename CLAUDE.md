@@ -2,6 +2,8 @@
 
 **Critical:** This document defines AI-optimized documentation standards and development workflow. **NEVER PERFORM COMMITS ON THE REPOSITORY.**
 
+**ALWAYS DO:** When you feel work is complete, use the docker compose build readmebook to confirm you have no errors. If the build succeeds, then you can tell me it is ready to be tested.
+
 ---
 
 ## 1. Token-Efficient Documentation System

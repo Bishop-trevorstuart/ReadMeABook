@@ -16,6 +16,7 @@ import { InteractiveTorrentSearchModal } from './InteractiveTorrentSearchModal';
 interface RequestCardProps {
   request: {
     id: string;
+    type?: 'audiobook' | 'ebook';
     status: string;
     progress: number;
     errorMessage?: string;
@@ -38,10 +39,14 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
   const [showError, setShowError] = React.useState(false);
   const [showInteractiveSearch, setShowInteractiveSearch] = React.useState(false);
 
+  const requestType = request.type || 'audiobook';
+  const isEbook = requestType === 'ebook';
+
   const canCancel = ['pending', 'searching', 'downloading'].includes(request.status);
   const isActive = ['searching', 'downloading', 'processing'].includes(request.status);
   const isFailed = request.status === 'failed';
-  const canSearch = ['pending', 'failed', 'awaiting_search'].includes(request.status);
+  // Ebook requests don't support interactive search (Anna's Archive only)
+  const canSearch = !isEbook && ['pending', 'failed', 'awaiting_search'].includes(request.status);
 
   const handleCancel = async () => {
     if (window.confirm('Are you sure you want to cancel this request?')) {
@@ -100,19 +105,30 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
               />
             ) : (
               <div className="w-full h-full flex items-center justify-center">
-                <svg
-                  className="w-12 h-12 text-gray-400"
-                  fill="none"
-                  stroke="currentColor"
-                  viewBox="0 0 24 24"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    strokeWidth={2}
-                    d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-                  />
-                </svg>
+                {isEbook ? (
+                  <svg
+                    className="w-12 h-12"
+                    style={{ color: '#f16f19' }}
+                    fill="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path d="M6 2c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6H6zm7 7V3.5L18.5 9H13z" />
+                  </svg>
+                ) : (
+                  <svg
+                    className="w-12 h-12 text-gray-400"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
+                    />
+                  </svg>
+                )}
               </div>
             )}
           </div>
@@ -130,9 +146,20 @@ export function RequestCard({ request, showActions = true }: RequestCardProps) {
             </p>
           </div>
 
-          {/* Status Badge */}
-          <div className="flex items-center gap-2">
+          {/* Status Badge and Type Badge */}
+          <div className="flex items-center gap-2 flex-wrap">
             <StatusBadge status={request.status} progress={request.progress} />
+            {isEbook && (
+              <span
+                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded-full"
+                style={{ backgroundColor: '#f16f1920', color: '#f16f19' }}
+              >
+                <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                  <path d="M9 4.804A7.968 7.968 0 005.5 4c-1.255 0-2.443.29-3.5.804v10A7.969 7.969 0 015.5 14c1.669 0 3.218.51 4.5 1.385A7.962 7.962 0 0114.5 14c1.255 0 2.443.29 3.5.804v-10A7.968 7.968 0 0014.5 4c-1.255 0-2.443.29-3.5.804V12a1 1 0 11-2 0V4.804z" />
+                </svg>
+                Ebook
+              </span>
+            )}
             {isActive && request.progress > 0 && (
               <div className="flex items-center gap-1 text-xs text-gray-500 dark:text-gray-400">
                 <div className="animate-pulse w-2 h-2 bg-blue-500 rounded-full"></div>

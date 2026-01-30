@@ -37,9 +37,11 @@ export async function processRetryFailedImports(payload: RetryFailedImportsPaylo
       localPath: pathMappingConfig.download_client_local_path || '',
     };
 
-    // Find all active requests in awaiting_import status
+    // Find all active audiobook requests in awaiting_import status
+    // Note: Ebook requests use the same organize_files processor but with type branching
     const requests = await prisma.request.findMany({
       where: {
+        type: 'audiobook', // Only audiobook requests (ebooks handled by same processor but different flow)
         status: 'awaiting_import',
         deletedAt: null,
       },

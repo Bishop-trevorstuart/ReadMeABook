@@ -433,10 +433,12 @@ export async function processScanPlex(payload: ScanPlexPayload): Promise<any> {
       logger.info(`No orphaned audiobooks found`);
     }
 
-    // 6. Match all non-terminal requests against library
+    // 6. Match all non-terminal audiobook requests against library
+    // Note: Ebook requests don't match to Plex/ABS library - they stop at 'downloaded' status
     logger.info(`Checking for matchable requests...`);
     const matchableRequests = await prisma.request.findMany({
       where: {
+        type: 'audiobook', // Only match audiobook requests (ebooks don't go to 'available')
         status: { notIn: ['available', 'cancelled'] },
         deletedAt: null,
       },

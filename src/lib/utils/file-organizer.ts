@@ -19,7 +19,6 @@ import {
   checkDiskSpace,
 } from './chapter-merger';
 import { prisma } from '../db';
-import { downloadEbook } from '../services/ebook-scraper';
 import { substituteTemplate, type TemplateVariables } from './path-template.util';
 
 export interface AudiobookMetadata {
@@ -40,6 +39,13 @@ export interface OrganizationResult {
   errors: string[];
   audioFiles: string[];
   coverArtFile?: string;
+}
+
+export interface EbookOrganizationResult {
+  success: boolean;
+  targetPath: string;
+  errors: string[];
+  format?: string;
 }
 
 export interface ValidationResult {
@@ -399,55 +405,10 @@ export class FileOrganizer {
         }
       }
 
-      // E-book sidecar: Download accompanying e-book if enabled
-      try {
-        const ebookConfig = await prisma.configuration.findUnique({
-          where: { key: 'ebook_sidecar_enabled' },
-        });
-
-        const ebookEnabled = ebookConfig?.value === 'true';
-
-        if (ebookEnabled) {
-          await logger?.info(`E-book sidecar enabled, searching for e-book...`);
-
-          // Get configuration
-          const [formatConfig, baseUrlConfig, flaresolverrConfig] = await Promise.all([
-            prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_preferred_format' } }),
-            prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_base_url' } }),
-            prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_flaresolverr_url' } }),
-          ]);
-
-          const preferredFormat = formatConfig?.value || 'epub';
-          const baseUrl = baseUrlConfig?.value || 'https://annas-archive.li';
-          const flaresolverrUrl = flaresolverrConfig?.value || undefined;
-
-          // Download e-book (will try ASIN first, then fall back to title+author)
-          const ebookResult = await downloadEbook(
-            audiobook.asin || '', // ASIN (optional - will fallback to title+author if empty)
-            audiobook.title,
-            audiobook.author,
-            targetPath, // Same directory as audiobook
-            preferredFormat,
-            baseUrl,
-            logger ?? undefined,
-            flaresolverrUrl
-          );
-
-          if (ebookResult.success && ebookResult.filePath) {
-            await logger?.info(`E-book downloaded: ${path.basename(ebookResult.filePath)}`);
-            result.filesMovedCount++;
-          } else {
-            await logger?.warn(`E-book download failed: ${ebookResult.error}`);
-            result.errors.push(`E-book sidecar: ${ebookResult.error}`);
-          }
-        }
-      } catch (error) {
-        await logger?.warn(
-          `E-book sidecar error: ${error instanceof Error ? error.message : 'Unknown error'}`
-        );
-        result.errors.push('E-book sidecar failed');
-        // Don't throw - audiobook organization continues
-      }
+      // NOTE: E-book downloads are now handled via first-class ebook requests
+      // The createEbookRequestIfEnabled() function in organize-files.processor.ts
+      // creates a separate ebook request that goes through the full job queue flow.
+      // This replaces the old inline ebook sidecar download that happened here.
 
       result.targetPath = targetPath;
       result.success = true;
@@ -679,6 +640,102 @@ export class FileOrganizer {
     }
 
     return result;
+  }
+
+  /**
+   * Organize ebook file into proper directory structure
+   * Simplified compared to audiobooks - no metadata tagging, cover art, or chapter merging
+   */
+  async organizeEbook(
+    downloadPath: string,
+    metadata: { title: string; author: string; asin?: string; year?: number },
+    template: string,
+    loggerConfig?: LoggerConfig
+  ): Promise<EbookOrganizationResult> {
+    const logger = loggerConfig ? RMABLogger.forJob(loggerConfig.jobId, loggerConfig.context) : null;
+
+    const result: EbookOrganizationResult = {
+      success: false,
+      targetPath: '',
+      errors: [],
+    };
+
+    try {
+      await logger?.info(`Organizing ebook: ${downloadPath}`);
+
+      // Get file info
+      const stats = await fs.stat(downloadPath);
+      if (!stats.isFile()) {
+        throw new Error('Ebook download path must be a file');
+      }
+
+      // Detect format from extension
+      const ext = path.extname(downloadPath).toLowerCase().slice(1);
+      const ebookFormats = ['epub', 'pdf', 'mobi', 'azw', 'azw3', 'fb2', 'cbz', 'cbr'];
+      if (!ebookFormats.includes(ext)) {
+        throw new Error(`Unsupported ebook format: ${ext}`);
+      }
+
+      result.format = ext;
+      await logger?.info(`Detected ebook format: ${ext}`);
+
+      // Build target directory using same template as audiobooks
+      const targetDir = this.buildTargetPath(
+        this.mediaDir,
+        template,
+        metadata.author,
+        metadata.title,
+        undefined, // narrator
+        metadata.asin,
+        metadata.year
+      );
+
+      await logger?.info(`Target directory: ${targetDir}`);
+
+      // Create target directory
+      await fs.mkdir(targetDir, { recursive: true });
+
+      // Build target filename (sanitize source filename)
+      const sourceFilename = path.basename(downloadPath);
+      const targetFilename = this.sanitizePath(sourceFilename);
+      const targetPath = path.join(targetDir, targetFilename);
+
+      // Check if target already exists
+      try {
+        await fs.access(targetPath);
+        await logger?.info(`Ebook already exists at target, skipping copy: ${targetFilename}`);
+        result.success = true;
+        result.targetPath = targetDir;
+        return result;
+      } catch {
+        // File doesn't exist, continue with copy
+      }
+
+      // Copy ebook file (don't delete original in case of direct download retry)
+      await fs.copyFile(downloadPath, targetPath);
+      await fs.chmod(targetPath, 0o644);
+
+      await logger?.info(`Copied ebook: ${targetFilename}`);
+
+      // Clean up source file (for direct HTTP downloads, we don't need to keep the original)
+      try {
+        await fs.unlink(downloadPath);
+        await logger?.info(`Cleaned up source file: ${sourceFilename}`);
+      } catch {
+        // Ignore cleanup errors
+      }
+
+      result.success = true;
+      result.targetPath = targetDir;
+
+      await logger?.info(`Ebook organization complete: ${targetFilename}`);
+
+      return result;
+    } catch (error) {
+      await logger?.error(`Ebook organization failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      result.errors.push(error instanceof Error ? error.message : 'Unknown error');
+      return result;
+    }
   }
 }
 

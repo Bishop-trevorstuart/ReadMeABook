@@ -26,7 +26,7 @@ export interface DeleteRequestResult {
 /**
  * Soft delete a request with intelligent cleanup of media files and torrents
  *
- * Logic:
+ * Logic (audiobook requests):
  * 1. Check if request exists and is not already deleted
  * 2. For each download:
  *    - If unlimited seeding (0): Log and keep seeding, no monitoring
@@ -34,7 +34,15 @@ export interface DeleteRequestResult {
  *    - If seeding requirement met: Delete torrent + files
  *    - If still seeding: Keep in qBittorrent for cleanup job
  * 3. Delete media files (title folder only)
- * 4. Soft delete request (set deletedAt, deletedBy)
+ * 4. Delete from backend library (Plex/ABS)
+ * 5. Clear audiobook availability linkage
+ * 6. Soft delete request (set deletedAt, deletedBy)
+ *
+ * Logic (ebook requests):
+ * 1. Check if request exists and is not already deleted
+ * 2. Delete ebook files only (leave audiobook files intact)
+ * 3. Soft delete request (set deletedAt, deletedBy)
+ * Note: No backend library deletion or audiobook linkage clearing for ebooks
  */
 export async function deleteRequest(
   requestId: string,
@@ -57,6 +65,7 @@ export async function deleteRequest(
             audibleAsin: true,
             plexGuid: true,
             absItemId: true,
+            fileFormat: true,
           },
         },
         downloadHistory: {
@@ -70,6 +79,10 @@ export async function deleteRequest(
         },
       },
     });
+
+    // Determine request type (default to audiobook for backward compatibility)
+    const requestType = (request as any)?.type || 'audiobook';
+    const isEbook = requestType === 'ebook';
 
     if (!request) {
       return {
@@ -87,10 +100,11 @@ export async function deleteRequest(
     let torrentsKeptSeeding = 0;
     let torrentsKeptUnlimited = 0;
 
-    // 2. Handle downloads & seeding
+    // 2. Handle downloads & seeding (skip for ebooks - they use direct HTTP downloads)
     const downloadHistory = request.downloadHistory[0];
+    const skipTorrentHandling = isEbook; // Ebooks use direct downloads, not torrents/NZBs
 
-    if (downloadHistory && downloadHistory.indexerName) {
+    if (!skipTorrentHandling && downloadHistory && downloadHistory.indexerName) {
       try {
         // Get indexer seeding configuration
         const { getConfigService } = await import('./config.service');
@@ -186,7 +200,9 @@ export async function deleteRequest(
       }
     }
 
-    // 3. Delete media files (title folder only)
+    // 3. Delete media files
+    // For audiobooks: delete entire title folder
+    // For ebooks: delete only ebook files (leave audiobook files intact)
     let filesDeleted = false;
     try {
       const { getConfigService } = await import('./config.service');
@@ -219,15 +235,34 @@ export async function deleteRequest(
         }
       );
 
-      // Check if folder exists and delete it
+      // Check if folder exists
       try {
         await fs.access(titleFolderPath);
 
-        // Delete the title folder (not the author folder)
-        await fs.rm(titleFolderPath, { recursive: true, force: true });
+        if (isEbook) {
+          // For ebooks: only delete ebook files, leave audiobook files intact
+          const ebookExtensions = ['.epub', '.pdf', '.mobi', '.azw', '.azw3', '.fb2', '.cbz', '.cbr'];
+          const files = await fs.readdir(titleFolderPath);
 
-        logger.info(`Deleted media directory: ${titleFolderPath}`);
-        filesDeleted = true;
+          let deletedCount = 0;
+          for (const file of files) {
+            const ext = path.extname(file).toLowerCase();
+            if (ebookExtensions.includes(ext)) {
+              const filePath = path.join(titleFolderPath, file);
+              await fs.unlink(filePath);
+              logger.info(`Deleted ebook file: ${file}`);
+              deletedCount++;
+            }
+          }
+
+          filesDeleted = deletedCount > 0;
+          logger.info(`Deleted ${deletedCount} ebook file(s) from: ${titleFolderPath}`);
+        } else {
+          // For audiobooks: delete the entire title folder
+          await fs.rm(titleFolderPath, { recursive: true, force: true });
+          logger.info(`Deleted media directory: ${titleFolderPath}`);
+          filesDeleted = true;
+        }
       } catch (accessError) {
         // Folder doesn't exist - that's okay
         logger.info(`Media directory not found: ${titleFolderPath}`);
@@ -242,143 +277,188 @@ export async function deleteRequest(
     }
 
     // 4. Delete from plex_library table and clear audiobook availability
+    // Skip for ebooks - audiobook files and library entry should remain intact
     // This ensures the book immediately shows as NOT available when searching
-    try {
-      const { getConfigService } = await import('./config.service');
-      const configService = getConfigService();
-      const backendMode = await configService.getBackendMode();
+    if (!isEbook) {
+      try {
+        const { getConfigService } = await import('./config.service');
+        const configService = getConfigService();
+        const backendMode = await configService.getBackendMode();
 
-      // Delete from library backend (ABS or Plex)
-      if (backendMode === 'audiobookshelf' && request.audiobook.absItemId) {
-        // Audiobookshelf: delete the library item from ABS
-        try {
-          const { deleteABSItem } = await import('../services/audiobookshelf/api');
-          await deleteABSItem(request.audiobook.absItemId);
-          logger.info(
-            `Deleted Audiobookshelf library item ${request.audiobook.absItemId} for "${request.audiobook.title}"`
-          );
-        } catch (absError) {
-          logger.error(
-            `Error deleting Audiobookshelf library item ${request.audiobook.absItemId}`,
-            { error: absError instanceof Error ? absError.message : String(absError) }
-          );
-          // Continue with deletion even if ABS deletion fails
+        // Delete from library backend (ABS or Plex)
+        if (backendMode === 'audiobookshelf' && request.audiobook.absItemId) {
+          // Audiobookshelf: delete the library item from ABS
+          try {
+            const { deleteABSItem } = await import('../services/audiobookshelf/api');
+            await deleteABSItem(request.audiobook.absItemId);
+            logger.info(
+              `Deleted Audiobookshelf library item ${request.audiobook.absItemId} for "${request.audiobook.title}"`
+            );
+          } catch (absError) {
+            logger.error(
+              `Error deleting Audiobookshelf library item ${request.audiobook.absItemId}`,
+              { error: absError instanceof Error ? absError.message : String(absError) }
+            );
+            // Continue with deletion even if ABS deletion fails
+          }
+        } else if (backendMode === 'plex' && request.audiobook.plexGuid) {
+          // Plex: delete the library item from Plex by ratingKey
+          try {
+            // Query plex_library table to get the ratingKey
+            const plexLibraryRecord = await prisma.plexLibrary.findUnique({
+              where: { plexGuid: request.audiobook.plexGuid },
+              select: { plexRatingKey: true },
+            });
+
+            if (plexLibraryRecord && plexLibraryRecord.plexRatingKey) {
+              const ratingKey = plexLibraryRecord.plexRatingKey;
+
+              // Get Plex config
+              const plexServerUrl = (await configService.get('plex_url')) || '';
+              const plexToken = (await configService.get('plex_token')) || '';
+
+              if (plexServerUrl && plexToken) {
+                const { getPlexService } = await import('../integrations/plex.service');
+                const plexService = getPlexService();
+                await plexService.deleteItem(plexServerUrl, plexToken, ratingKey);
+                logger.info(
+                  `Deleted Plex library item ${ratingKey} (plexGuid: ${request.audiobook.plexGuid}) for "${request.audiobook.title}"`
+                );
+              } else {
+                logger.warn('Plex server URL or token not configured, skipping Plex library deletion');
+              }
+            } else {
+              logger.warn(
+                `No plexRatingKey found in plex_library for plexGuid: ${request.audiobook.plexGuid}`
+              );
+            }
+          } catch (plexError) {
+            logger.error(
+              `Error deleting Plex library item (plexGuid: ${request.audiobook.plexGuid})`,
+              { error: plexError instanceof Error ? plexError.message : String(plexError) }
+            );
+            // Continue with deletion even if Plex deletion fails
+          }
         }
-      } else if (backendMode === 'plex' && request.audiobook.plexGuid) {
-        // Plex: delete the library item from Plex by ratingKey
+
+        // Delete ALL plex_library records matching this audiobook's title and author
+        // This handles cases where there might be duplicate library records
+        // and ensures the book doesn't show as "In Your Library" during searches
         try {
-          // Query plex_library table to get the ratingKey
-          const plexLibraryRecord = await prisma.plexLibrary.findUnique({
-            where: { plexGuid: request.audiobook.plexGuid },
-            select: { plexRatingKey: true },
+          // Find all matching library records (by title/author fuzzy match)
+          const matchingLibraryRecords = await prisma.plexLibrary.findMany({
+            where: {
+              title: {
+                contains: request.audiobook.title.substring(0, 20),
+                mode: 'insensitive',
+              },
+            },
           });
 
-          if (plexLibraryRecord && plexLibraryRecord.plexRatingKey) {
-            const ratingKey = plexLibraryRecord.plexRatingKey;
+          // Filter to exact matches (case-insensitive title and author)
+          const exactMatches = matchingLibraryRecords.filter((record) => {
+            const titleMatch = record.title.toLowerCase() === request.audiobook.title.toLowerCase();
+            const authorMatch = record.author.toLowerCase() === request.audiobook.author.toLowerCase();
+            return titleMatch && authorMatch;
+          });
 
-            // Get Plex config
-            const plexServerUrl = (await configService.get('plex_url')) || '';
-            const plexToken = (await configService.get('plex_token')) || '';
+          if (exactMatches.length > 0) {
+            // Delete all exact matches
+            const deletePromises = exactMatches.map((record) =>
+              prisma.plexLibrary.delete({ where: { id: record.id } })
+            );
 
-            if (plexServerUrl && plexToken) {
-              const { getPlexService } = await import('../integrations/plex.service');
-              const plexService = getPlexService();
-              await plexService.deleteItem(plexServerUrl, plexToken, ratingKey);
-              logger.info(
-                `Deleted Plex library item ${ratingKey} (plexGuid: ${request.audiobook.plexGuid}) for "${request.audiobook.title}"`
-              );
-            } else {
-              logger.warn('Plex server URL or token not configured, skipping Plex library deletion');
-            }
+            await Promise.all(deletePromises);
+
+            logger.info(
+              `Deleted ${exactMatches.length} plex_library record(s) for "${request.audiobook.title}"`
+            );
           } else {
-            logger.warn(
-              `No plexRatingKey found in plex_library for plexGuid: ${request.audiobook.plexGuid}`
+            logger.info(
+              `No plex_library records found for "${request.audiobook.title}"`
             );
           }
-        } catch (plexError) {
+        } catch (libError) {
           logger.error(
-            `Error deleting Plex library item (plexGuid: ${request.audiobook.plexGuid})`,
-            { error: plexError instanceof Error ? plexError.message : String(plexError) }
+            `Error deleting plex_library records`,
+            { error: libError instanceof Error ? libError.message : String(libError) }
           );
-          // Continue with deletion even if Plex deletion fails
+          // Continue with deletion even if library cleanup fails
         }
-      }
 
-      // Delete ALL plex_library records matching this audiobook's title and author
-      // This handles cases where there might be duplicate library records
-      // and ensures the book doesn't show as "In Your Library" during searches
+        // Clear audiobook record linkage
+        const updateData: any = {
+          status: 'requested', // Reset to requested state
+          updatedAt: new Date(),
+        };
+
+        // Clear library linkage based on backend mode
+        if (backendMode === 'audiobookshelf') {
+          updateData.absItemId = null;
+        } else {
+          updateData.plexGuid = null;
+        }
+
+        await prisma.audiobook.update({
+          where: { id: request.audiobook.id },
+          data: updateData,
+        });
+
+        logger.info(
+          `Cleared availability status for audiobook ${request.audiobook.id}`
+        );
+      } catch (error) {
+        logger.error(
+          `Error clearing audiobook status`,
+          { error: error instanceof Error ? error.message : String(error) }
+        );
+        // Continue with deletion even if this fails
+      }
+    } else {
+      logger.info(`Skipping backend library deletion for ebook request ${requestId}`);
+    }
+
+    // 5. Delete child requests (ebook requests linked to this audiobook request)
+    if (!isEbook) {
       try {
-        // Find all matching library records (by title/author fuzzy match)
-        const matchingLibraryRecords = await prisma.plexLibrary.findMany({
+        const childRequests = await prisma.request.findMany({
           where: {
-            title: {
-              contains: request.audiobook.title.substring(0, 20),
-              mode: 'insensitive',
-            },
+            parentRequestId: requestId,
+            deletedAt: null,
+          },
+          select: {
+            id: true,
+            type: true,
           },
         });
 
-        // Filter to exact matches (case-insensitive title and author)
-        const exactMatches = matchingLibraryRecords.filter((record) => {
-          const titleMatch = record.title.toLowerCase() === request.audiobook.title.toLowerCase();
-          const authorMatch = record.author.toLowerCase() === request.audiobook.author.toLowerCase();
-          return titleMatch && authorMatch;
-        });
+        if (childRequests.length > 0) {
+          logger.info(`Found ${childRequests.length} child request(s) to delete`);
 
-        if (exactMatches.length > 0) {
-          // Delete all exact matches
-          const deletePromises = exactMatches.map((record) =>
-            prisma.plexLibrary.delete({ where: { id: record.id } })
-          );
+          // Soft delete all child requests
+          await prisma.request.updateMany({
+            where: {
+              parentRequestId: requestId,
+              deletedAt: null,
+            },
+            data: {
+              deletedAt: new Date(),
+              deletedBy: adminUserId,
+            },
+          });
 
-          await Promise.all(deletePromises);
-
-          logger.info(
-            `Deleted ${exactMatches.length} plex_library record(s) for "${request.audiobook.title}"`
-          );
-        } else {
-          logger.info(
-            `No plex_library records found for "${request.audiobook.title}"`
-          );
+          logger.info(`Soft-deleted ${childRequests.length} child request(s)`);
         }
-      } catch (libError) {
+      } catch (error) {
         logger.error(
-          `Error deleting plex_library records`,
-          { error: libError instanceof Error ? libError.message : String(libError) }
+          `Error deleting child requests for ${requestId}`,
+          { error: error instanceof Error ? error.message : String(error) }
         );
-        // Continue with deletion even if library cleanup fails
+        // Continue with parent deletion even if child deletion fails
       }
-
-      // Clear audiobook record linkage
-      const updateData: any = {
-        status: 'requested', // Reset to requested state
-        updatedAt: new Date(),
-      };
-
-      // Clear library linkage based on backend mode
-      if (backendMode === 'audiobookshelf') {
-        updateData.absItemId = null;
-      } else {
-        updateData.plexGuid = null;
-      }
-
-      await prisma.audiobook.update({
-        where: { id: request.audiobook.id },
-        data: updateData,
-      });
-
-      logger.info(
-        `Cleared availability status for audiobook ${request.audiobook.id}`
-      );
-    } catch (error) {
-      logger.error(
-        `Error clearing audiobook status`,
-        { error: error instanceof Error ? error.message : String(error) }
-      );
-      // Continue with deletion even if this fails
     }
 
-    // 5. Soft delete request
+    // 6. Soft delete request
     await prisma.request.update({
       where: { id: requestId },
       data: {

@@ -136,6 +136,8 @@ async function handler(req: AuthenticatedRequest) {
           where: {
             userId,
             audiobookId: audiobook.id,
+            type: 'audiobook', // Only check audiobook requests (ebook requests are separate)
+            deletedAt: null, // Only check active requests
           },
         });
 
@@ -187,6 +189,7 @@ async function handler(req: AuthenticatedRequest) {
               userId,
               audiobookId: audiobook.id,
               status: initialStatus,
+              type: 'audiobook', // Explicit type for user-created requests
               priority: 0,
             },
           });

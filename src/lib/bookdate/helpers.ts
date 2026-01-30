@@ -927,7 +927,7 @@ export async function isInLibrary(
 }
 
 /**
- * Check if book has already been requested
+ * Check if book has already been requested (audiobook request)
  * @param userId - User ID
  * @param asin - Audible ASIN
  * @returns true if book is already requested
@@ -939,6 +939,8 @@ export async function isAlreadyRequested(
   const request = await prisma.request.findFirst({
     where: {
       userId,
+      type: 'audiobook', // Only check audiobook requests (ebook requests are separate)
+      deletedAt: null, // Only check active requests
       audiobook: {
         audibleAsin: asin,
       },

@@ -249,9 +249,11 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
       }
     }
 
-    // Check for all non-terminal requests to match
+    // Check for all non-terminal audiobook requests to match
+    // Note: Ebook requests don't match to Plex/ABS library - they stop at 'downloaded' status
     const matchableRequests = await prisma.request.findMany({
       where: {
+        type: 'audiobook', // Only match audiobook requests (ebooks don't go to 'available')
         status: { notIn: ['available', 'cancelled'] },
         deletedAt: null,
       },

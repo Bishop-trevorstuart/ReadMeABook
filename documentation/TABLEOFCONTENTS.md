@@ -38,10 +38,12 @@
 - **Database caching, real-time matching** → [integrations/audible.md](integrations/audible.md)
 - **Book covers API for login page** → [frontend/pages/login.md](frontend/pages/login.md)
 
-## E-book Sidecar
-- **Optional e-book downloads from Anna's Archive** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
+## E-book Support (First-Class)
+- **First-class ebook requests, separate tracking** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
 - **ASIN-based matching, format selection** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
-- **Non-blocking, atomic failures** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
+- **Ebook ranking algorithm (inverted size scoring)** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
+- **Direct HTTP downloads from Anna's Archive** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
+- **Ebook delete behavior (files only)** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
 
 ## Automation Pipeline
 - **Full pipeline overview** → [phase3/README.md](phase3/README.md)
@@ -108,8 +110,10 @@
 **"How do Usenet/NZB downloads work?"** → [phase3/sabnzbd.md](phase3/sabnzbd.md), [backend/services/jobs.md](backend/services/jobs.md)
 **"Can I use both qBittorrent and SABnzbd?"** → [phase3/download-clients.md](phase3/download-clients.md)
 **"How does Plex matching work?"** → [integrations/plex.md](integrations/plex.md)
-**"How does e-book sidecar work?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
+**"How does e-book support work?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
 **"How do I enable e-book downloads?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md), [settings-pages.md](settings-pages.md)
+**"What happens when I delete an ebook request?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md#delete-behavior)
+**"Why do ebook requests have an orange badge?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md#ui-representation)
 **"How do scheduled jobs work?"** → [backend/services/scheduler.md](backend/services/scheduler.md)
 **"How do I configure external services?"** → [setup-wizard.md](setup-wizard.md), [settings-pages.md](settings-pages.md)
 **"What's the database schema?"** → [backend/database.md](backend/database.md)

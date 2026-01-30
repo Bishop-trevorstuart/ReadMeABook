@@ -2,16 +2,13 @@
  * Component: Fetch E-book API
  * Documentation: documentation/integrations/ebook-sidecar.md
  *
- * Triggers e-book download for a completed request
+ * Creates an ebook request for a completed audiobook request
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middleware/auth';
 import { prisma } from '@/lib/db';
-import { downloadEbook } from '@/lib/services/ebook-scraper';
-import { buildAudiobookPath } from '@/lib/utils/file-organizer';
-import fs from 'fs/promises';
-import path from 'path';
+import { getJobQueueService } from '@/lib/services/job-queue.service';
 import { RMABLogger } from '@/lib/utils/logger';
 
 const logger = RMABLogger.create('API.FetchEbook');
@@ -23,7 +20,7 @@ export async function POST(
   return requireAuth(request, async (req: AuthenticatedRequest) => {
     return requireAdmin(req, async () => {
       try {
-        const { id } = await params;
+        const { id: parentRequestId } = await params;
 
         // Check if e-book sidecar is enabled
         const ebookEnabledConfig = await prisma.configuration.findUnique({
@@ -37,118 +34,108 @@ export async function POST(
           );
         }
 
-        // Get the request with audiobook data
-        const requestRecord = await prisma.request.findUnique({
-          where: { id },
+        // Get the parent request with audiobook data
+        const parentRequest = await prisma.request.findUnique({
+          where: { id: parentRequestId },
           include: {
             audiobook: true,
           },
         });
 
-        if (!requestRecord) {
+        if (!parentRequest) {
           return NextResponse.json(
             { error: 'Request not found' },
             { status: 404 }
           );
         }
 
-        // Check if request is in completed state
-        if (!['downloaded', 'available'].includes(requestRecord.status)) {
+        // Check if parent request is in completed state
+        if (!['downloaded', 'available'].includes(parentRequest.status)) {
           return NextResponse.json(
-            { error: `Cannot fetch e-book for request in ${requestRecord.status} status` },
+            { error: `Cannot fetch e-book for request in ${parentRequest.status} status` },
             { status: 400 }
           );
         }
 
-        const audiobook = requestRecord.audiobook;
-
-        // Get configuration
-        const [mediaDirConfig, templateConfig, formatConfig, baseUrlConfig, flaresolverrConfig] = await Promise.all([
-          prisma.configuration.findUnique({ where: { key: 'media_dir' } }),
-          prisma.configuration.findUnique({ where: { key: 'audiobook_path_template' } }),
-          prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_preferred_format' } }),
-          prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_base_url' } }),
-          prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_flaresolverr_url' } }),
-        ]);
-
-        const mediaDir = mediaDirConfig?.value || '/media/audiobooks';
-        const template = templateConfig?.value || '{author}/{title} {asin}';
-        const preferredFormat = formatConfig?.value || 'epub';
-        const baseUrl = baseUrlConfig?.value || 'https://annas-archive.li';
-        const flaresolverrUrl = flaresolverrConfig?.value || undefined;
-
-        // Fetch year from audible cache if ASIN is available
-        let year: number | undefined;
-        if (audiobook.audibleAsin) {
-          const audibleCache = await prisma.audibleCache.findUnique({
-            where: { asin: audiobook.audibleAsin },
-            select: { releaseDate: true },
-          });
-          if (audibleCache?.releaseDate) {
-            year = new Date(audibleCache.releaseDate).getFullYear();
-          }
-        }
-
-        // Build target path using centralized function
-        const targetPath = buildAudiobookPath(
-          mediaDir,
-          template,
-          {
-            author: audiobook.author,
-            title: audiobook.title,
-            narrator: audiobook.narrator || undefined,
-            asin: audiobook.audibleAsin || undefined,
-            year,
-          }
-        );
-
-        logger.debug('Fetch e-book request', {
-          requestId: id,
-          title: audiobook.title,
-          author: audiobook.author,
-          targetPath,
-          format: preferredFormat,
-          baseUrl,
-          flaresolverr: flaresolverrUrl || 'none'
+        // Check if an ebook request already exists for this parent
+        const existingEbookRequest = await prisma.request.findFirst({
+          where: {
+            parentRequestId,
+            type: 'ebook',
+            deletedAt: null,
+          },
         });
 
-        // Check if target directory exists
-        try {
-          await fs.access(targetPath);
-        } catch {
-          logger.debug(`Target directory not found: ${targetPath}`);
-          return NextResponse.json(
-            { error: 'Audiobook directory not found. Was the audiobook properly organized?' },
-            { status: 400 }
-          );
-        }
+        if (existingEbookRequest) {
+          // Check status - if failed/pending, we can retry
+          if (['failed', 'awaiting_search'].includes(existingEbookRequest.status)) {
+            // Reset and retry
+            await prisma.request.update({
+              where: { id: existingEbookRequest.id },
+              data: {
+                status: 'pending',
+                progress: 0,
+                errorMessage: null,
+                updatedAt: new Date(),
+              },
+            });
 
-        // Download e-book
-        const result = await downloadEbook(
-          audiobook.audibleAsin || '',
-          audiobook.title,
-          audiobook.author,
-          targetPath,
-          preferredFormat,
-          baseUrl,
-          undefined, // No logger in API context
-          flaresolverrUrl
-        );
+            // Trigger search job
+            const jobQueue = getJobQueueService();
+            await jobQueue.addSearchEbookJob(existingEbookRequest.id, {
+              id: parentRequest.audiobook.id,
+              title: parentRequest.audiobook.title,
+              author: parentRequest.audiobook.author,
+              asin: parentRequest.audiobook.audibleAsin || undefined,
+            });
 
-        if (result.success) {
-          logger.info(`E-book downloaded: ${result.filePath ? path.basename(result.filePath) : 'unknown'} for "${audiobook.title}"`);
-          return NextResponse.json({
-            success: true,
-            message: `E-book downloaded: ${result.filePath ? path.basename(result.filePath) : 'unknown'}`,
-            format: result.format,
-          });
-        } else {
-          logger.warn(`E-book download failed for "${audiobook.title}"`, { error: result.error });
+            logger.info(`Retrying ebook request ${existingEbookRequest.id} for "${parentRequest.audiobook.title}"`);
+
+            return NextResponse.json({
+              success: true,
+              message: 'E-book search retried',
+              requestId: existingEbookRequest.id,
+            });
+          }
+
+          // Already exists and not in a retryable state
           return NextResponse.json({
             success: false,
-            message: result.error || 'E-book download failed',
+            message: `E-book request already exists (status: ${existingEbookRequest.status})`,
+            requestId: existingEbookRequest.id,
           });
         }
+
+        // Create new ebook request
+        const ebookRequest = await prisma.request.create({
+          data: {
+            userId: parentRequest.userId,
+            audiobookId: parentRequest.audiobookId,
+            type: 'ebook',
+            parentRequestId,
+            status: 'pending',
+            progress: 0,
+          },
+        });
+
+        logger.info(`Created ebook request ${ebookRequest.id} for "${parentRequest.audiobook.title}"`);
+
+        // Trigger ebook search job
+        const jobQueue = getJobQueueService();
+        await jobQueue.addSearchEbookJob(ebookRequest.id, {
+          id: parentRequest.audiobook.id,
+          title: parentRequest.audiobook.title,
+          author: parentRequest.audiobook.author,
+          asin: parentRequest.audiobook.audibleAsin || undefined,
+        });
+
+        logger.info(`Triggered search_ebook job for request ${ebookRequest.id}`);
+
+        return NextResponse.json({
+          success: true,
+          message: 'E-book request created and search started',
+          requestId: ebookRequest.id,
+        });
       } catch (error) {
         logger.error('Unexpected error', { error: error instanceof Error ? error.message : String(error) });
         return NextResponse.json(

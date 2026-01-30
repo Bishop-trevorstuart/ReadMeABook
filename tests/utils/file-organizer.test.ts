@@ -275,17 +275,8 @@ describe('file organizer', () => {
     expect(fsMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
   });
 
-  it('downloads remote cover art and ebook sidecar when enabled', async () => {
+  it('downloads remote cover art when no local cover exists', async () => {
     configState.values.set('metadata_tagging_enabled', 'false');
-    configState.values.set('ebook_sidecar_enabled', 'true');
-    configState.values.set('ebook_sidecar_preferred_format', 'epub');
-    configState.values.set('ebook_sidecar_base_url', 'https://ebooks.example');
-    configState.values.set('ebook_sidecar_flaresolverr_url', 'http://flaresolverr');
-
-    ebookMock.downloadEbook.mockResolvedValue({
-      success: true,
-      filePath: '/media/Author/Book/book.epub',
-    });
 
     const organizer = new FileOrganizer('/media', '/tmp');
     (organizer as any).findAudiobookFiles = vi.fn().mockResolvedValue({
@@ -322,18 +313,11 @@ describe('file organizer', () => {
       'https://images.example/cover.jpg',
       expect.objectContaining({ responseType: 'arraybuffer' })
     );
-    expect(ebookMock.downloadEbook).toHaveBeenCalledWith(
-      'ASIN123',
-      'Book',
-      'Author',
-      expectedDir,
-      'epub',
-      'https://ebooks.example',
-      undefined,
-      'http://flaresolverr'
-    );
+    // NOTE: Ebook downloads are now handled as first-class requests through the job queue
+    // The file organizer no longer downloads ebooks inline
+    expect(ebookMock.downloadEbook).not.toHaveBeenCalled();
     expect(fsMock.copyFile).toHaveBeenCalledWith(sourcePath, targetFile);
-    expect(result.filesMovedCount).toBe(2);
+    expect(result.filesMovedCount).toBe(1);
   });
 
   it('records an error when cover art download fails', async () => {
@@ -444,36 +428,9 @@ describe('file organizer', () => {
     expect(result.errors.join(' ')).toContain('Failed to tag 1 file(s) with metadata');
   });
 
-  it('records ebook sidecar errors when download throws', async () => {
-    configState.values.set('metadata_tagging_enabled', 'false');
-    configState.values.set('ebook_sidecar_enabled', 'true');
-
-    ebookMock.downloadEbook.mockRejectedValue(new Error('ebook down'));
-
-    const organizer = new FileOrganizer('/media', '/tmp');
-    (organizer as any).findAudiobookFiles = vi.fn().mockResolvedValue({
-      audioFiles: ['book.m4b'],
-      coverFile: undefined,
-      isFile: false,
-    });
-
-    const sourcePath = path.join('/downloads', 'book', 'book.m4b');
-    fsMock.access.mockImplementation(async (filePath: string) => {
-      if (path.normalize(filePath) === path.normalize(sourcePath)) return undefined;
-      throw new Error('missing');
-    });
-    fsMock.mkdir.mockResolvedValue(undefined);
-    fsMock.copyFile.mockResolvedValue(undefined);
-    fsMock.chmod.mockResolvedValue(undefined);
-
-    const result = await organizer.organize('/downloads/book', {
-      title: 'Book',
-      author: 'Author',
-    }, '{author}/{title}');
-
-    expect(result.success).toBe(true);
-    expect(result.errors).toContain('E-book sidecar failed');
-  });
+  // NOTE: The ebook sidecar test was removed because ebook downloads are now
+  // handled as first-class requests through the job queue, not inline during
+  // file organization. See organize-files.processor.ts createEbookRequestIfEnabled().
 
   it('finds audio files and cover art in nested folders', async () => {
     const organizer = new FileOrganizer('/media', '/tmp');

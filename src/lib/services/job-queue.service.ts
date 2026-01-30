@@ -24,7 +24,11 @@ export type JobType =
   | 'retry_failed_imports'
   | 'cleanup_seeded_torrents'
   | 'monitor_rss_feeds'
-  | 'send_notification';
+  | 'send_notification'
+  // Ebook-specific job types
+  | 'search_ebook'
+  | 'start_direct_download'
+  | 'monitor_direct_download';
 
 export interface JobPayload {
   jobId?: string; // Database job ID (added automatically by addJob)
@@ -93,6 +97,45 @@ export interface RetryFailedImportsPayload extends JobPayload {
 
 export interface CleanupSeededTorrentsPayload extends JobPayload {
   scheduledJobId?: string;
+}
+
+// Ebook-specific payload interfaces
+export interface SearchEbookPayload extends JobPayload {
+  requestId: string;
+  audiobook: {
+    id: string;
+    title: string;
+    author: string;
+    asin?: string; // ASIN for Anna's Archive search (best match)
+  };
+  preferredFormat?: string; // epub, pdf, mobi, azw3 (default: from config)
+}
+
+export interface EbookSearchResult {
+  md5: string;
+  title: string;
+  author: string;
+  format: string;
+  fileSize?: number;
+  downloadUrls: string[]; // Slow download URLs from Anna's Archive
+  source: 'annas_archive'; // For future indexer support
+  score: number; // Ranking score (for future multi-source ranking)
+}
+
+export interface StartDirectDownloadPayload extends JobPayload {
+  requestId: string;
+  downloadHistoryId: string;
+  downloadUrl: string;
+  targetFilename: string;
+  expectedSize?: number;
+}
+
+export interface MonitorDirectDownloadPayload extends JobPayload {
+  requestId: string;
+  downloadHistoryId: string;
+  downloadId: string; // Internal tracking ID
+  targetPath: string; // Full path to the downloading file
+  expectedSize?: number;
 }
 
 export interface SendNotificationPayload extends JobPayload {
@@ -300,6 +343,22 @@ export class JobQueueService {
     this.queue.process('send_notification', 5, async (job: BullJob<SendNotificationPayload>) => {
       const { processSendNotification } = await import('../processors/send-notification.processor');
       return await processSendNotification(job.data);
+    });
+
+    // Ebook-specific processors
+    this.queue.process('search_ebook', 3, async (job: BullJob<SearchEbookPayload>) => {
+      const { processSearchEbook } = await import('../processors/search-ebook.processor');
+      return await processSearchEbook(job.data);
+    });
+
+    this.queue.process('start_direct_download', 3, async (job: BullJob<StartDirectDownloadPayload>) => {
+      const { processStartDirectDownload } = await import('../processors/direct-download.processor');
+      return await processStartDirectDownload(job.data);
+    });
+
+    this.queue.process('monitor_direct_download', 5, async (job: BullJob<MonitorDirectDownloadPayload>) => {
+      const { processMonitorDirectDownload } = await import('../processors/direct-download.processor');
+      return await processMonitorDirectDownload(job.data);
     });
   }
 
@@ -631,6 +690,83 @@ export class JobQueueService {
       } as CleanupSeededTorrentsPayload,
       {
         priority: 10,
+      }
+    );
+  }
+
+  // =========================================================================
+  // EBOOK-SPECIFIC JOB METHODS
+  // =========================================================================
+
+  /**
+   * Add search ebook job (Anna's Archive search)
+   */
+  async addSearchEbookJob(
+    requestId: string,
+    audiobook: { id: string; title: string; author: string; asin?: string },
+    preferredFormat?: string
+  ): Promise<string> {
+    return await this.addJob(
+      'search_ebook',
+      {
+        requestId,
+        audiobook,
+        preferredFormat,
+      } as SearchEbookPayload,
+      {
+        priority: 10, // High priority for user-initiated requests
+      }
+    );
+  }
+
+  /**
+   * Add start direct download job (HTTP download for ebooks)
+   */
+  async addStartDirectDownloadJob(
+    requestId: string,
+    downloadHistoryId: string,
+    downloadUrl: string,
+    targetFilename: string,
+    expectedSize?: number
+  ): Promise<string> {
+    return await this.addJob(
+      'start_direct_download',
+      {
+        requestId,
+        downloadHistoryId,
+        downloadUrl,
+        targetFilename,
+        expectedSize,
+      } as StartDirectDownloadPayload,
+      {
+        priority: 9, // High priority - download selected ebook
+      }
+    );
+  }
+
+  /**
+   * Add monitor direct download job (tracks HTTP download progress)
+   */
+  async addMonitorDirectDownloadJob(
+    requestId: string,
+    downloadHistoryId: string,
+    downloadId: string,
+    targetPath: string,
+    expectedSize?: number,
+    delaySeconds: number = 0
+  ): Promise<string> {
+    return await this.addJob(
+      'monitor_direct_download',
+      {
+        requestId,
+        downloadHistoryId,
+        downloadId,
+        targetPath,
+        expectedSize,
+      } as MonitorDirectDownloadPayload,
+      {
+        priority: 5, // Medium priority
+        delay: delaySeconds * 1000,
       }
     );
   }

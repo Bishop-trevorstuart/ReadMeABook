@@ -61,13 +61,14 @@ export async function POST(request: NextRequest) {
       const body = await req.json();
       const { audiobook, torrent } = RequestWithTorrentSchema.parse(body);
 
-      // First check: Is there an existing request in 'downloaded' or 'available' status?
+      // First check: Is there an existing audiobook request in 'downloaded' or 'available' status?
       // This catches the gap where files are organized but Plex hasn't scanned yet
       const existingActiveRequest = await prisma.request.findFirst({
         where: {
           audiobook: {
             audibleAsin: audiobook.asin,
           },
+          type: 'audiobook', // Only check audiobook requests (ebook requests are separate)
           status: { in: ['downloaded', 'available'] },
           deletedAt: null,
         },
@@ -181,11 +182,12 @@ export async function POST(request: NextRequest) {
         logger.debug(`Updated audiobook ${audiobookRecord.id} with year: ${year || 'unchanged'}, series: ${series || 'unchanged'}`);
       }
 
-      // Check if user already has an active (non-deleted) request for this audiobook
+      // Check if user already has an active (non-deleted) audiobook request for this audiobook
       const existingRequest = await prisma.request.findFirst({
         where: {
           userId: req.user.id,
           audiobookId: audiobookRecord.id,
+          type: 'audiobook', // Only check audiobook requests (ebook requests are separate)
           deletedAt: null, // Only check active requests
         },
       });
@@ -263,6 +265,7 @@ export async function POST(request: NextRequest) {
             userId: req.user.id,
             audiobookId: audiobookRecord.id,
             status: 'awaiting_approval',
+            type: 'audiobook', // Explicit type for user-created requests
             progress: 0,
             selectedTorrent: torrent as any, // Store the selected torrent for later
           },
@@ -304,6 +307,7 @@ export async function POST(request: NextRequest) {
             userId: req.user.id,
             audiobookId: audiobookRecord.id,
             status: 'downloading',
+            type: 'audiobook', // Explicit type for user-created requests
             progress: 0,
           },
           include: {

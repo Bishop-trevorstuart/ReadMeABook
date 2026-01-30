@@ -14,6 +14,7 @@ import { generateFilesHash } from '../utils/files-hash';
 /**
  * Process organize files job
  * Moves completed downloads to media library in proper directory structure
+ * Handles both audiobook and ebook request types with appropriate branching
  */
 export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promise<any> {
   const { requestId, audiobookId, downloadPath, jobId } = payload;
@@ -24,6 +25,27 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
   logger.info(`Download path: ${downloadPath}`);
 
   try {
+    // Fetch request to determine type
+    const request = await prisma.request.findUnique({
+      where: { id: requestId },
+      include: {
+        user: { select: { plexUsername: true } },
+      },
+    });
+
+    if (!request) {
+      throw new Error(`Request ${requestId} not found`);
+    }
+
+    const requestType = request.type || 'audiobook'; // Default to audiobook for backward compatibility
+    logger.info(`Request type: ${requestType}`);
+
+    // Branch based on request type
+    if (requestType === 'ebook') {
+      return await processEbookOrganization(payload, request, logger);
+    }
+
+    // Continue with audiobook organization flow
     // Update request status to processing
     await prisma.request.update({
       where: { id: requestId },
@@ -148,6 +170,10 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
       coverArt: result.coverArtFile,
       errors: result.errors,
     });
+
+    // Create ebook request if ebook downloads enabled (for audiobook requests only)
+    // This replaces the old inline ebook sidecar download
+    await createEbookRequestIfEnabled(requestId, audiobook, request.userId, result.targetPath, logger);
 
     // Trigger filesystem scan if enabled (Plex or Audiobookshelf)
     const configService = getConfigService();
@@ -431,5 +457,217 @@ export async function processOrganizeFiles(payload: OrganizeFilesPayload): Promi
 
       throw error;
     }
+  }
+}
+
+// =========================================================================
+// EBOOK-SPECIFIC ORGANIZATION
+// =========================================================================
+
+/**
+ * Process ebook organization (simplified flow compared to audiobooks)
+ * - No metadata tagging
+ * - No cover art download
+ * - No files hash generation
+ * - Sends "available" notification at downloaded state (terminal for ebooks)
+ */
+async function processEbookOrganization(
+  payload: OrganizeFilesPayload,
+  request: { id: string; userId: string; type: string; user: { plexUsername: string | null } },
+  logger: RMABLogger
+): Promise<any> {
+  const { requestId, audiobookId, downloadPath, jobId } = payload;
+
+  logger.info(`Processing ebook organization for request ${requestId}`);
+
+  // Update request status to processing
+  await prisma.request.update({
+    where: { id: requestId },
+    data: {
+      status: 'processing',
+      progress: 100,
+      updatedAt: new Date(),
+    },
+  });
+
+  // Get book details (works for both audiobooks and ebooks)
+  const book = await prisma.audiobook.findUnique({
+    where: { id: audiobookId },
+  });
+
+  if (!book) {
+    throw new Error(`Book ${audiobookId} not found`);
+  }
+
+  logger.info(`Organizing ebook: ${book.title} by ${book.author}`);
+
+  // Get file organizer and template
+  const organizer = await getFileOrganizer();
+  const templateConfig = await prisma.configuration.findUnique({
+    where: { key: 'audiobook_path_template' },
+  });
+  const template = templateConfig?.value || '{author}/{title} {asin}';
+
+  // Organize ebook files (organizer will detect ebook type and skip audio-specific processing)
+  const result = await organizer.organizeEbook(
+    downloadPath,
+    {
+      title: book.title,
+      author: book.author,
+      asin: book.audibleAsin || undefined,
+      year: book.year || undefined,
+    },
+    template,
+    jobId ? { jobId, context: 'FileOrganizer.Ebook' } : undefined
+  );
+
+  if (!result.success) {
+    throw new Error(`Ebook organization failed: ${result.errors.join(', ')}`);
+  }
+
+  logger.info(`Successfully moved ebook to ${result.targetPath}`);
+
+  // Update book record with file path
+  await prisma.audiobook.update({
+    where: { id: audiobookId },
+    data: {
+      filePath: result.targetPath,
+      fileFormat: result.format || 'epub',
+      status: 'completed',
+      completedAt: new Date(),
+      updatedAt: new Date(),
+    },
+  });
+
+  // Update request to downloaded (terminal state for ebooks)
+  await prisma.request.update({
+    where: { id: requestId },
+    data: {
+      status: 'downloaded',
+      progress: 100,
+      completedAt: new Date(),
+      updatedAt: new Date(),
+    },
+  });
+
+  logger.info(`Ebook request ${requestId} completed - status: downloaded (terminal)`);
+
+  // Send "available" notification for ebooks at downloaded state
+  // (since ebooks don't transition to 'available' via Plex matching)
+  const jobQueue = getJobQueueService();
+  await jobQueue.addNotificationJob(
+    'request_available',
+    requestId,
+    book.title,
+    book.author,
+    request.user.plexUsername || 'Unknown User'
+  ).catch((error) => {
+    logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
+  });
+
+  // Trigger filesystem scan if enabled (same as audiobooks)
+  const configService = getConfigService();
+  const backendMode = await configService.getBackendMode();
+  const configKey = backendMode === 'audiobookshelf'
+    ? 'audiobookshelf.trigger_scan_after_import'
+    : 'plex.trigger_scan_after_import';
+  const scanEnabled = await configService.get(configKey);
+
+  logger.debug(`Ebook library scan check: backendMode=${backendMode}, configKey=${configKey}, scanEnabled=${scanEnabled}`);
+
+  if (scanEnabled === 'true') {
+    try {
+      const libraryService = await getLibraryService();
+      const libraryId = backendMode === 'audiobookshelf'
+        ? await configService.get('audiobookshelf.library_id')
+        : await configService.get('plex_audiobook_library_id');
+
+      if (libraryId) {
+        await libraryService.triggerLibraryScan(libraryId);
+        logger.info(`Triggered ${backendMode} filesystem scan for library ${libraryId}`);
+      } else {
+        logger.warn(`Library ID not configured for ${backendMode}, skipping scan`);
+      }
+    } catch (error) {
+      logger.error(`Failed to trigger filesystem scan: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    }
+  } else {
+    logger.debug(`Ebook library scan disabled (scanEnabled=${scanEnabled})`);
+  }
+
+  return {
+    success: true,
+    message: 'Ebook organized successfully',
+    requestId,
+    audiobookId,
+    targetPath: result.targetPath,
+    format: result.format,
+  };
+}
+
+/**
+ * Create ebook request if ebook downloads are enabled
+ * Called after audiobook organization completes
+ */
+async function createEbookRequestIfEnabled(
+  parentRequestId: string,
+  audiobook: { id: string; title: string; author: string; audibleAsin: string | null },
+  userId: string,
+  targetPath: string,
+  logger: RMABLogger
+): Promise<void> {
+  try {
+    // Check if ebook downloads are enabled
+    const configService = getConfigService();
+    const ebookEnabled = await configService.get('ebook_sidecar_enabled');
+
+    if (ebookEnabled !== 'true') {
+      logger.info('Ebook downloads disabled, skipping ebook request creation');
+      return;
+    }
+
+    // Check if an ebook request already exists for this parent
+    const existingEbookRequest = await prisma.request.findFirst({
+      where: {
+        parentRequestId,
+        type: 'ebook',
+        deletedAt: null,
+      },
+    });
+
+    if (existingEbookRequest) {
+      logger.info(`Ebook request already exists for parent ${parentRequestId}: ${existingEbookRequest.id}`);
+      return;
+    }
+
+    logger.info(`Creating ebook request for "${audiobook.title}" (parent: ${parentRequestId})`);
+
+    // Create new ebook request (auto-approved since parent was approved)
+    const ebookRequest = await prisma.request.create({
+      data: {
+        userId,
+        audiobookId: audiobook.id,
+        type: 'ebook',
+        parentRequestId,
+        status: 'pending', // Will trigger search_ebook job
+        progress: 0,
+      },
+    });
+
+    logger.info(`Created ebook request ${ebookRequest.id}`);
+
+    // Trigger ebook search job
+    const jobQueue = getJobQueueService();
+    await jobQueue.addSearchEbookJob(ebookRequest.id, {
+      id: audiobook.id,
+      title: audiobook.title,
+      author: audiobook.author,
+      asin: audiobook.audibleAsin || undefined,
+    });
+
+    logger.info(`Triggered search_ebook job for request ${ebookRequest.id}`);
+  } catch (error) {
+    // Don't fail the main audiobook organization if ebook request creation fails
+    logger.error(`Failed to create ebook request: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

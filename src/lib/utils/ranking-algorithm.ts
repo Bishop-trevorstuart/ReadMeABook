@@ -624,6 +624,161 @@ export class RankingAlgorithm {
   }
 }
 
+// =========================================================================
+// EBOOK RANKING (simplified algorithm for ebook search results)
+// =========================================================================
+
+export interface EbookResult {
+  md5: string;
+  title: string;
+  author: string;
+  format: string;           // epub, pdf, mobi, etc.
+  fileSize?: number;        // in bytes
+  downloadUrls: string[];
+  source: 'annas_archive' | 'prowlarr';  // Source of the result
+  indexerId?: number;       // Prowlarr indexer ID (if applicable)
+}
+
+export interface EbookRequest {
+  title: string;
+  author: string;
+  preferredFormat: string;  // User's preferred format (epub, pdf, etc.)
+}
+
+export interface RankedEbook extends EbookResult {
+  score: number;            // Total score (0-100)
+  rank: number;
+  breakdown: {
+    formatScore: number;    // 0-40 points
+    sizeScore: number;      // 0-30 points (inverted - smaller is better)
+    sourceScore: number;    // 0-30 points (Anna's Archive priority)
+    notes: string[];
+  };
+}
+
+/**
+ * Rank ebook search results
+ * Scoring priorities (inverted from audiobooks):
+ * - Format match: 40 points (matching preferred format)
+ * - Size: 30 points (smaller files = better, inverted from audiobooks)
+ * - Source: 30 points (Anna's Archive priority for reliability)
+ */
+export function rankEbooks(
+  results: EbookResult[],
+  request: EbookRequest
+): RankedEbook[] {
+  const preferredFormat = request.preferredFormat.toLowerCase();
+
+  const ranked = results.map((result): RankedEbook => {
+    const notes: string[] = [];
+
+    // ========== FORMAT SCORING (0-40 points) ==========
+    // Exact format match gets full points
+    // Similar formats get partial credit
+    let formatScore = 0;
+    const resultFormat = result.format.toLowerCase();
+
+    if (resultFormat === preferredFormat) {
+      formatScore = 40;
+      notes.push(`✓ Preferred format (${result.format.toUpperCase()})`);
+    } else {
+      // Partial credit for compatible formats
+      const ebookFormatGroups = [
+        ['epub', 'kepub'],           // EPUB family
+        ['mobi', 'azw', 'azw3'],     // Kindle family
+        ['pdf'],                      // PDF standalone
+        ['fb2', 'fb2.zip'],          // FB2 family
+        ['cbz', 'cbr'],              // Comic formats
+      ];
+
+      const preferredGroup = ebookFormatGroups.find(g => g.includes(preferredFormat));
+      const resultGroup = ebookFormatGroups.find(g => g.includes(resultFormat));
+
+      if (preferredGroup && resultGroup && preferredGroup === resultGroup) {
+        formatScore = 30; // Same family
+        notes.push(`Similar format (${result.format.toUpperCase()})`);
+      } else if (resultFormat === 'epub') {
+        formatScore = 25; // EPUB is universally convertible
+        notes.push(`Convertible format (${result.format.toUpperCase()})`);
+      } else if (resultFormat === 'pdf') {
+        formatScore = 15; // PDF is common but less flexible
+        notes.push(`PDF format (less flexible)`);
+      } else {
+        formatScore = 10; // Other formats
+        notes.push(`Different format (${result.format.toUpperCase()})`);
+      }
+    }
+
+    // ========== SIZE SCORING (0-30 points, inverted) ==========
+    // For ebooks, smaller files are generally better (cleaner, no bloat)
+    // Typical ebook sizes: 0.5-5 MB (good), 5-20 MB (has images), 20+ MB (may have issues)
+    let sizeScore = 0;
+
+    if (result.fileSize !== undefined && result.fileSize > 0) {
+      const sizeMB = result.fileSize / (1024 * 1024);
+
+      if (sizeMB <= 2) {
+        sizeScore = 30; // Ideal size
+        notes.push('✓ Optimal file size');
+      } else if (sizeMB <= 5) {
+        sizeScore = 25; // Good size
+        notes.push('Good file size');
+      } else if (sizeMB <= 15) {
+        sizeScore = 20; // Has images, acceptable
+        notes.push('Larger file (may have images)');
+      } else if (sizeMB <= 50) {
+        sizeScore = 10; // Large, possibly bloated
+        notes.push('⚠️ Large file size');
+      } else {
+        sizeScore = 5; // Very large, suspicious
+        notes.push('⚠️ Very large file (may include extras)');
+      }
+    } else {
+      // No size info - give middle score
+      sizeScore = 15;
+      notes.push('File size unknown');
+    }
+
+    // ========== SOURCE SCORING (0-30 points) ==========
+    // Anna's Archive is the primary reliable source
+    // Future: Prowlarr indexers will get configurable priority
+    let sourceScore = 0;
+
+    if (result.source === 'annas_archive') {
+      sourceScore = 30; // Full points for Anna's Archive
+      notes.push('✓ Anna\'s Archive (reliable)');
+    } else if (result.source === 'prowlarr') {
+      // Future: Use indexer priority from config
+      sourceScore = 15; // Base score for Prowlarr results
+      notes.push('Prowlarr indexer');
+    }
+
+    const totalScore = formatScore + sizeScore + sourceScore;
+
+    return {
+      ...result,
+      score: totalScore,
+      rank: 0, // Will be assigned after sorting
+      breakdown: {
+        formatScore,
+        sizeScore,
+        sourceScore,
+        notes,
+      },
+    };
+  });
+
+  // Sort by score descending
+  ranked.sort((a, b) => b.score - a.score);
+
+  // Assign ranks
+  ranked.forEach((r, index) => {
+    r.rank = index + 1;
+  });
+
+  return ranked;
+}
+
 // Singleton instance
 let ranker: RankingAlgorithm | null = null;
 

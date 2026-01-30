@@ -44,12 +44,14 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
 
     logger.info(`Loaded configuration for ${indexerConfigMap.size} indexers`);
 
-    // Find all completed requests + soft-deleted requests (orphaned downloads)
+    // Find all completed audiobook requests + soft-deleted audiobook requests (orphaned downloads)
     // IMPORTANT: Only cleanup requests that are truly complete and not being actively processed
     // NOTE: Multiple requests can share the same torrent hash (e.g., re-requesting same audiobook)
     // Before deleting torrent, we check if other active requests are using it
+    // NOTE: Ebook requests use direct HTTP downloads (no torrent seeding), so they're excluded
     const completedRequests = await prisma.request.findMany({
       where: {
+        type: 'audiobook', // Only audiobook requests (ebooks don't have torrents to seed)
         OR: [
           // Active requests that are fully available (scanned by Plex/ABS)
           {
@@ -148,11 +150,12 @@ export async function processCleanupSeededTorrents(payload: CleanupSeededTorrent
 
         logger.info(`Torrent ${torrent.name} (${indexerName}) has met seeding requirement (${Math.floor(actualSeedingTime / 60)}/${seedingConfig.seedingTimeMinutes} minutes)`);
 
-        // CRITICAL: Check if any other active (non-deleted) request is using this same torrent hash
+        // CRITICAL: Check if any other active (non-deleted) audiobook request is using this same torrent hash
         // This prevents deleting shared torrents when user re-requests the same audiobook
         const otherActiveRequests = await prisma.request.findMany({
           where: {
             id: { not: request.id }, // Exclude current request
+            type: 'audiobook', // Only check audiobook requests
             deletedAt: null, // Only check active requests
             downloadHistory: {
               some: {

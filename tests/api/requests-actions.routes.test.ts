@@ -20,6 +20,7 @@ const jobQueueMock = vi.hoisted(() => ({
   addSearchJob: vi.fn(),
   addDownloadJob: vi.fn(),
   addNotificationJob: vi.fn(() => Promise.resolve()),
+  addSearchEbookJob: vi.fn(() => Promise.resolve()),
 }));
 const downloadEbookMock = vi.hoisted(() => vi.fn());
 const fsMock = vi.hoisted(() => ({
@@ -355,42 +356,75 @@ describe('Request action routes', () => {
     expect(payload.error).toMatch(/Cannot fetch e-book/);
   });
 
-  it('returns 400 when audiobook directory is missing', async () => {
+  it('creates ebook request and triggers search job', async () => {
     configState.values.set('ebook_sidecar_enabled', 'true');
+
+    // Mock parent request lookup
     prismaMock.request.findUnique.mockResolvedValueOnce({
       id: 'req-6',
+      userId: 'user-1',
+      audiobookId: 'ab-1',
       status: 'downloaded',
-      audiobook: { title: 'Title', author: 'Author', audibleAsin: 'ASIN' },
+      audiobook: { id: 'ab-1', title: 'Title', author: 'Author', audibleAsin: 'ASIN123' },
     });
-    fsMock.access.mockRejectedValueOnce(new Error('missing'));
+
+    // Mock check for existing ebook request
+    prismaMock.request.findFirst.mockResolvedValueOnce(null);
+
+    // Mock ebook request creation
+    prismaMock.request.create.mockResolvedValueOnce({
+      id: 'ebook-req-1',
+      type: 'ebook',
+      parentRequestId: 'req-6',
+    });
 
     const { POST } = await import('@/app/api/requests/[id]/fetch-ebook/route');
     const response = await POST({} as any, { params: Promise.resolve({ id: 'req-6' }) });
     const payload = await response.json();
 
-    expect(response.status).toBe(400);
-    expect(payload.error).toMatch(/directory not found/);
+    expect(payload.success).toBe(true);
+    expect(payload.message).toMatch(/created/i);
+    expect(payload.requestId).toBe('ebook-req-1');
+    expect(prismaMock.request.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        type: 'ebook',
+        parentRequestId: 'req-6',
+        status: 'pending',
+      }),
+    });
+    expect(jobQueueMock.addSearchEbookJob).toHaveBeenCalledWith(
+      'ebook-req-1',
+      expect.objectContaining({
+        id: 'ab-1',
+        title: 'Title',
+        author: 'Author',
+        asin: 'ASIN123',
+      })
+    );
   });
 
-  it('downloads ebook and returns success', async () => {
+  it('retries existing failed ebook request', async () => {
     configState.values.set('ebook_sidecar_enabled', 'true');
-    configState.values.set('media_dir', '/media/audiobooks');
-    configState.values.set('audiobook_path_template', '{author}/{title} {asin}');
-    configState.values.set('ebook_sidecar_preferred_format', 'epub');
-    configState.values.set('ebook_sidecar_base_url', 'https://ebooks.example');
-    configState.values.set('ebook_sidecar_flaresolverr_url', 'http://flaresolverr');
 
+    // Mock parent request lookup
     prismaMock.request.findUnique.mockResolvedValueOnce({
       id: 'req-7',
+      userId: 'user-1',
+      audiobookId: 'ab-1',
       status: 'available',
-      audiobook: { title: 'Title', author: 'Author', audibleAsin: 'ASIN123' },
+      audiobook: { id: 'ab-1', title: 'Title', author: 'Author', audibleAsin: 'ASIN123' },
     });
-    prismaMock.audibleCache.findUnique.mockResolvedValueOnce({ releaseDate: '2022-05-01' });
-    fsMock.access.mockResolvedValueOnce(undefined);
-    downloadEbookMock.mockResolvedValueOnce({
-      success: true,
-      format: 'epub',
-      filePath: '/media/audiobooks/Author/Title ASIN123/Title.epub',
+
+    // Mock existing failed ebook request
+    prismaMock.request.findFirst.mockResolvedValueOnce({
+      id: 'ebook-req-existing',
+      status: 'failed',
+    });
+
+    // Mock update for retry
+    prismaMock.request.update.mockResolvedValueOnce({
+      id: 'ebook-req-existing',
+      status: 'pending',
     });
 
     const { POST } = await import('@/app/api/requests/[id]/fetch-ebook/route');
@@ -398,29 +432,35 @@ describe('Request action routes', () => {
     const payload = await response.json();
 
     expect(payload.success).toBe(true);
-    expect(downloadEbookMock).toHaveBeenCalledWith(
-      'ASIN123',
-      'Title',
-      'Author',
-      expect.stringContaining('Title ASIN123'),
-      'epub',
-      'https://ebooks.example',
-      undefined,
-      'http://flaresolverr'
-    );
+    expect(payload.message).toMatch(/retried/i);
+    expect(payload.requestId).toBe('ebook-req-existing');
+    expect(prismaMock.request.update).toHaveBeenCalledWith({
+      where: { id: 'ebook-req-existing' },
+      data: expect.objectContaining({
+        status: 'pending',
+        progress: 0,
+        errorMessage: null,
+      }),
+    });
+    expect(jobQueueMock.addSearchEbookJob).toHaveBeenCalled();
   });
 
-  it('returns failure payload when ebook download fails', async () => {
+  it('returns message when ebook request already exists and in progress', async () => {
     configState.values.set('ebook_sidecar_enabled', 'true');
+
+    // Mock parent request lookup
     prismaMock.request.findUnique.mockResolvedValueOnce({
       id: 'req-8',
+      userId: 'user-1',
+      audiobookId: 'ab-1',
       status: 'downloaded',
-      audiobook: { title: 'Title', author: 'Author', audibleAsin: 'ASIN123' },
+      audiobook: { id: 'ab-1', title: 'Title', author: 'Author', audibleAsin: 'ASIN123' },
     });
-    fsMock.access.mockResolvedValueOnce(undefined);
-    downloadEbookMock.mockResolvedValueOnce({
-      success: false,
-      error: 'Download failed',
+
+    // Mock existing in-progress ebook request
+    prismaMock.request.findFirst.mockResolvedValueOnce({
+      id: 'ebook-req-existing',
+      status: 'downloading',
     });
 
     const { POST } = await import('@/app/api/requests/[id]/fetch-ebook/route');
@@ -428,7 +468,11 @@ describe('Request action routes', () => {
     const payload = await response.json();
 
     expect(payload.success).toBe(false);
-    expect(payload.message).toMatch(/Download failed/);
+    expect(payload.message).toMatch(/already exists/i);
+    expect(payload.requestId).toBe('ebook-req-existing');
+    // Should not create new request or trigger search
+    expect(prismaMock.request.create).not.toHaveBeenCalled();
+    expect(jobQueueMock.addSearchEbookJob).not.toHaveBeenCalled();
   });
 });
 

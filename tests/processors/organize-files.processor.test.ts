@@ -40,6 +40,12 @@ vi.mock('@/lib/services/job-queue.service', () => ({
 describe('processOrganizeFiles', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock for request lookup (processor needs to determine request type)
+    prismaMock.request.findUnique.mockResolvedValue({
+      id: 'req-default',
+      type: 'audiobook', // Default to audiobook type
+      user: { plexUsername: 'testuser' },
+    });
   });
 
   it('organizes files and triggers filesystem scan when enabled', async () => {

@@ -56,6 +56,9 @@ vi.mock('@/lib/utils/file-organizer', () => ({
 describe('deleteRequest', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    // Default mock for child request queries (audiobook requests check for child ebook requests)
+    prismaMock.request.findMany.mockResolvedValue([]);
+    prismaMock.request.updateMany.mockResolvedValue({ count: 0 });
   });
 
   it('returns not found when request is missing', async () => {

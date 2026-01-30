@@ -21,6 +21,10 @@ const processorsMock = vi.hoisted(() => ({
   processRetryMissingTorrents: vi.fn().mockResolvedValue('ok'),
   processRetryFailedImports: vi.fn().mockResolvedValue('ok'),
   processCleanupSeededTorrents: vi.fn().mockResolvedValue('ok'),
+  // Ebook processors
+  processSearchEbook: vi.fn().mockResolvedValue('ok'),
+  processStartDirectDownload: vi.fn().mockResolvedValue('ok'),
+  processMonitorDirectDownload: vi.fn().mockResolvedValue('ok'),
 }));
 
 const queueMock = vi.hoisted(() => ({
@@ -109,6 +113,16 @@ vi.mock('@/lib/processors/retry-failed-imports.processor', () => ({
 
 vi.mock('@/lib/processors/cleanup-seeded-torrents.processor', () => ({
   processCleanupSeededTorrents: processorsMock.processCleanupSeededTorrents,
+}));
+
+// Ebook processors
+vi.mock('@/lib/processors/search-ebook.processor', () => ({
+  processSearchEbook: processorsMock.processSearchEbook,
+}));
+
+vi.mock('@/lib/processors/direct-download.processor', () => ({
+  processStartDirectDownload: processorsMock.processStartDirectDownload,
+  processMonitorDirectDownload: processorsMock.processMonitorDirectDownload,
 }));
 
 vi.mock('@/lib/db', () => ({
