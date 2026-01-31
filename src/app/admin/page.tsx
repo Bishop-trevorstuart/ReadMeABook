@@ -497,7 +497,7 @@ function AdminDashboardContent() {
               </h2>
               <RecentRequestsTable
                 requests={requestsData.requests}
-                ebookSidecarEnabled={settingsData?.ebook?.enabled || false}
+                ebookSidecarEnabled={settingsData?.ebook?.annasArchiveEnabled || settingsData?.ebook?.indexerSearchEnabled || false}
               />
             </div>
 

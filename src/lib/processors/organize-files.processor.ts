@@ -608,6 +608,10 @@ async function processEbookOrganization(
 /**
  * Create ebook request if ebook downloads are enabled
  * Called after audiobook organization completes
+ *
+ * Supports two ebook sources:
+ * - Anna's Archive (ebook_annas_archive_enabled) - Currently implemented
+ * - Indexer Search (ebook_indexer_search_enabled) - Future feature, gracefully skipped
  */
 async function createEbookRequestIfEnabled(
   parentRequestId: string,
@@ -617,14 +621,30 @@ async function createEbookRequestIfEnabled(
   logger: RMABLogger
 ): Promise<void> {
   try {
-    // Check if ebook downloads are enabled
+    // Check which ebook sources are enabled
     const configService = getConfigService();
-    const ebookEnabled = await configService.get('ebook_sidecar_enabled');
+    const annasArchiveEnabled = await configService.get('ebook_annas_archive_enabled');
+    const indexerSearchEnabled = await configService.get('ebook_indexer_search_enabled');
 
-    if (ebookEnabled !== 'true') {
-      logger.info('Ebook downloads disabled, skipping ebook request creation');
+    // Legacy migration: check old key if new keys don't exist
+    const legacyEnabled = await configService.get('ebook_sidecar_enabled');
+    const isAnnasArchiveEnabled = annasArchiveEnabled === 'true' ||
+      (annasArchiveEnabled === null && legacyEnabled === 'true');
+    const isIndexerSearchEnabled = indexerSearchEnabled === 'true';
+
+    // If no sources are enabled, skip ebook creation
+    if (!isAnnasArchiveEnabled && !isIndexerSearchEnabled) {
+      logger.info('Ebook downloads disabled (no sources enabled), skipping ebook request creation');
       return;
     }
+
+    // If only indexer search is enabled (not yet implemented), log and skip
+    if (!isAnnasArchiveEnabled && isIndexerSearchEnabled) {
+      logger.info('Ebook indexer search is enabled but not yet implemented, skipping ebook request creation');
+      return;
+    }
+
+    // Anna's Archive is enabled - proceed with ebook request creation
 
     // Check if an ebook request already exists for this parent
     const existingEbookRequest = await prisma.request.findFirst({
@@ -656,7 +676,7 @@ async function createEbookRequestIfEnabled(
 
     logger.info(`Created ebook request ${ebookRequest.id}`);
 
-    // Trigger ebook search job
+    // Trigger ebook search job (Anna's Archive)
     const jobQueue = getJobQueueService();
     await jobQueue.addSearchEbookJob(ebookRequest.id, {
       id: audiobook.id,

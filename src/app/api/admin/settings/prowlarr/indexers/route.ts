@@ -19,7 +19,9 @@ interface SavedIndexerConfig {
   seedingTimeMinutes?: number; // Torrents only
   removeAfterProcessing?: boolean; // Usenet only
   rssEnabled?: boolean;
-  categories?: number[]; // Array of category IDs (default: [3030] for audiobooks)
+  audiobookCategories?: number[]; // Array of category IDs for audiobooks (default: [3030])
+  ebookCategories?: number[]; // Array of category IDs for ebooks (default: [7020])
+  categories?: number[]; // Legacy field for migration
 }
 
 /**
@@ -54,6 +56,12 @@ export async function GET(request: NextRequest) {
           const isAdded = !!saved;
           const isTorrent = indexer.protocol?.toLowerCase() === 'torrent';
 
+          // Migration: if old 'categories' field exists but new fields don't, migrate
+          const migratedAudiobookCategories = saved?.audiobookCategories ||
+            saved?.categories || // Legacy migration
+            [3030]; // Default to audiobooks category
+          const migratedEbookCategories = saved?.ebookCategories || [7020]; // Default to ebooks category
+
           const config: any = {
             id: indexer.id,
             name: indexer.name,
@@ -63,7 +71,8 @@ export async function GET(request: NextRequest) {
             isAdded, // Explicit flag for UI (new card-based interface)
             priority: saved?.priority || 10,
             rssEnabled: saved?.rssEnabled ?? false,
-            categories: saved?.categories || [3030], // Default to audiobooks category
+            audiobookCategories: migratedAudiobookCategories,
+            ebookCategories: migratedEbookCategories,
             supportsRss: indexer.capabilities?.supportsRss !== false, // Default to true if not specified
           };
 
@@ -117,7 +126,8 @@ export async function PUT(request: NextRequest) {
               protocol: indexer.protocol,
               priority: indexer.priority,
               rssEnabled: indexer.rssEnabled || false,
-              categories: indexer.categories || [3030], // Default to audiobooks if not specified
+              audiobookCategories: indexer.audiobookCategories || [3030], // Default to audiobooks
+              ebookCategories: indexer.ebookCategories || [7020], // Default to ebooks
             };
 
             // Add protocol-specific fields

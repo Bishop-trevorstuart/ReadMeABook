@@ -40,10 +40,13 @@
 
 ## E-book Support (First-Class)
 - **First-class ebook requests, separate tracking** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
+- **Multi-source ebook downloads (Anna's Archive + Indexer Search)** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
 - **ASIN-based matching, format selection** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
 - **Ebook ranking algorithm (inverted size scoring)** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
 - **Direct HTTP downloads from Anna's Archive** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
 - **Ebook delete behavior (files only)** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
+- **Ebook settings (3-section UI)** → [settings-pages.md](settings-pages.md#e-book-sidecar)
+- **Indexer categories (audiobook/ebook tabs)** → [settings-pages.md](settings-pages.md#indexer-categories-tabbed)
 
 ## Automation Pipeline
 - **Full pipeline overview** → [phase3/README.md](phase3/README.md)
@@ -111,7 +114,9 @@
 **"Can I use both qBittorrent and SABnzbd?"** → [phase3/download-clients.md](phase3/download-clients.md)
 **"How does Plex matching work?"** → [integrations/plex.md](integrations/plex.md)
 **"How does e-book support work?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md)
-**"How do I enable e-book downloads?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md), [settings-pages.md](settings-pages.md)
+**"How do I enable e-book downloads?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md), [settings-pages.md](settings-pages.md#e-book-sidecar)
+**"How do I configure ebook sources (Anna's Archive vs Indexer)?"** → [settings-pages.md](settings-pages.md#e-book-sidecar)
+**"How do I configure ebook categories per indexer?"** → [settings-pages.md](settings-pages.md#indexer-categories-tabbed)
 **"What happens when I delete an ebook request?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md#delete-behavior)
 **"Why do ebook requests have an orange badge?"** → [integrations/ebook-sidecar.md](integrations/ebook-sidecar.md#ui-representation)
 **"How do scheduled jobs work?"** → [backend/services/scheduler.md](backend/services/scheduler.md)

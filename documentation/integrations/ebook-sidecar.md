@@ -1,9 +1,9 @@
 # E-book Support
 
-**Status:** ✅ Implemented | First-class ebook requests with Anna's Archive integration
+**Status:** ✅ Implemented | First-class ebook requests with multi-source support (Anna's Archive + future Indexer Search)
 
 ## Overview
-Ebooks are first-class citizens in RMAB, with their own request type, tracking, and UI representation. When an audiobook request completes, an ebook request is automatically created (if enabled). Ebooks are downloaded directly from Anna's Archive via HTTP.
+Ebooks are first-class citizens in RMAB, with their own request type, tracking, and UI representation. When an audiobook request completes, an ebook request is automatically created (if a source is enabled). Supports multiple sources: Anna's Archive (direct HTTP) and Indexer Search (via Prowlarr, coming soon).
 
 ## Key Details
 
@@ -14,9 +14,9 @@ Ebooks are first-class citizens in RMAB, with their own request type, tracking, 
 - **UI Badge:** Orange (#f16f19) ebook badge to distinguish from audiobooks
 - **Separate Tracking:** Own progress, status, and error handling
 
-### Flow
+### Flow (Anna's Archive)
 1. Audiobook organization completes
-2. Ebook request created automatically (if enabled)
+2. Ebook request created automatically (if Anna's Archive enabled)
 3. `search_ebook` job searches Anna's Archive
 4. `start_direct_download` downloads via HTTP
 5. `organize_files` copies to audiobook folder
@@ -25,14 +25,31 @@ Ebooks are first-class citizens in RMAB, with their own request type, tracking, 
 
 ### Configuration
 
-**Admin Settings → E-book Sidecar tab**
+**Admin Settings → E-book Sidecar tab** (3 sections)
 
+#### Section 1: Anna's Archive
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ebook_annas_archive_enabled` | `false` | Enable Anna's Archive downloads |
+| `ebook_sidecar_base_url` | `https://annas-archive.li` | Base URL for mirror |
+| `ebook_sidecar_flaresolverr_url` | `` (empty) | FlareSolverr proxy URL (optional) |
+
+#### Section 2: Indexer Search
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ebook_indexer_search_enabled` | `false` | Enable Indexer Search (not yet implemented) |
+
+*Note: Ebook categories are configured per-indexer in Settings → Indexers → Edit Indexer → EBook tab*
+
+#### Section 3: General Settings
 | Key | Default | Options | Description |
 |-----|---------|---------|-------------|
-| `ebook_sidecar_enabled` | `false` | `true/false` | Enable feature |
 | `ebook_sidecar_preferred_format` | `epub` | `epub, pdf, mobi, azw3, any` | Preferred format |
-| `ebook_sidecar_base_url` | `https://annas-archive.li` | URL | Base URL |
-| `ebook_sidecar_flaresolverr_url` | `` (empty) | URL | FlareSolverr proxy (optional) |
+
+### Source Priority
+- If **Anna's Archive** is enabled → Use Anna's Archive (current behavior)
+- If **only Indexer Search** is enabled → Log "not yet implemented", skip gracefully
+- If **both disabled** → Ebook downloads disabled entirely
 
 ## Database Schema
 
@@ -173,10 +190,18 @@ Search: https://annas-archive.li/search?q=Title+Author&ext=epub&lang=en
 
 ## Limitations
 
-1. Single source (Anna's Archive) - future Prowlarr support stubbed
+1. Indexer Search not yet implemented (settings ready, search stubbed)
 2. Title search may return wrong book for common titles
 3. Download speed depends on file server load
 4. English books only (title search filter)
+
+## Indexer Categories
+
+Indexer configuration supports separate category arrays for audiobooks and ebooks:
+- **Audiobook Categories:** Default `[3030]` (Audio/Audiobook)
+- **Ebook Categories:** Default `[7020]` (Books/EBook)
+
+Categories are configured per-indexer via the tabbed interface in the Edit Indexer modal.
 
 ## Related
 - [File Organization](../phase3/file-organization.md) - Ebook organization

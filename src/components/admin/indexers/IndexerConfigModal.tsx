@@ -1,6 +1,9 @@
 /**
  * Component: Indexer Configuration Modal
  * Documentation: documentation/frontend/components.md
+ *
+ * Supports separate category configurations for AudioBook and EBook searches
+ * via tabbed interface in the Categories section.
  */
 
 'use client';
@@ -10,7 +13,9 @@ import { Modal } from '@/components/ui/Modal';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { CategoryTreeView } from './CategoryTreeView';
-import { DEFAULT_CATEGORIES } from '@/lib/utils/torrent-categories';
+import { DEFAULT_AUDIOBOOK_CATEGORIES, DEFAULT_EBOOK_CATEGORIES } from '@/lib/utils/torrent-categories';
+
+type CategoryTab = 'audiobook' | 'ebook';
 
 interface IndexerConfigModalProps {
   isOpen: boolean;
@@ -27,7 +32,8 @@ interface IndexerConfigModalProps {
     seedingTimeMinutes?: number;
     removeAfterProcessing?: boolean;
     rssEnabled: boolean;
-    categories: number[];
+    audiobookCategories: number[];
+    ebookCategories: number[];
   };
   onSave: (config: {
     id: number;
@@ -37,7 +43,8 @@ interface IndexerConfigModalProps {
     seedingTimeMinutes?: number;
     removeAfterProcessing?: boolean;
     rssEnabled: boolean;
-    categories: number[];
+    audiobookCategories: number[];
+    ebookCategories: number[];
   }) => void;
 }
 
@@ -56,7 +63,8 @@ export function IndexerConfigModal({
     seedingTimeMinutes: 0,
     removeAfterProcessing: true, // Default to true for Usenet
     rssEnabled: indexer.supportsRss,
-    categories: DEFAULT_CATEGORIES, // Default to Audio/Audiobook [3030]
+    audiobookCategories: DEFAULT_AUDIOBOOK_CATEGORIES,
+    ebookCategories: DEFAULT_EBOOK_CATEGORIES,
   };
 
   // Form state
@@ -72,15 +80,24 @@ export function IndexerConfigModal({
   const [rssEnabled, setRssEnabled] = useState(
     initialConfig?.rssEnabled ?? defaults.rssEnabled
   );
-  const [selectedCategories, setSelectedCategories] = useState<number[]>(
-    initialConfig?.categories ?? defaults.categories
+
+  // Dual category state
+  const [audiobookCategories, setAudiobookCategories] = useState<number[]>(
+    initialConfig?.audiobookCategories ?? defaults.audiobookCategories
   );
+  const [ebookCategories, setEbookCategories] = useState<number[]>(
+    initialConfig?.ebookCategories ?? defaults.ebookCategories
+  );
+
+  // Tab state for categories
+  const [activeTab, setActiveTab] = useState<CategoryTab>('audiobook');
 
   // Validation errors
   const [errors, setErrors] = useState<{
     priority?: string;
     seedingTimeMinutes?: string;
-    categories?: string;
+    audiobookCategories?: string;
+    ebookCategories?: string;
   }>({});
 
   // Reset form when modal opens or indexer changes
@@ -91,14 +108,17 @@ export function IndexerConfigModal({
         setSeedingTimeMinutes(defaults.seedingTimeMinutes);
         setRemoveAfterProcessing(defaults.removeAfterProcessing);
         setRssEnabled(defaults.rssEnabled);
-        setSelectedCategories(defaults.categories);
+        setAudiobookCategories(defaults.audiobookCategories);
+        setEbookCategories(defaults.ebookCategories);
       } else {
         setPriority(initialConfig?.priority ?? defaults.priority);
         setSeedingTimeMinutes(initialConfig?.seedingTimeMinutes ?? defaults.seedingTimeMinutes);
         setRemoveAfterProcessing(initialConfig?.removeAfterProcessing ?? defaults.removeAfterProcessing);
         setRssEnabled(initialConfig?.rssEnabled ?? defaults.rssEnabled);
-        setSelectedCategories(initialConfig?.categories ?? defaults.categories);
+        setAudiobookCategories(initialConfig?.audiobookCategories ?? defaults.audiobookCategories);
+        setEbookCategories(initialConfig?.ebookCategories ?? defaults.ebookCategories);
       }
+      setActiveTab('audiobook');
       setErrors({});
     }
   }, [isOpen, mode, indexer.id]);
@@ -114,8 +134,12 @@ export function IndexerConfigModal({
       newErrors.seedingTimeMinutes = 'Seeding time cannot be negative';
     }
 
-    if (selectedCategories.length === 0) {
-      newErrors.categories = 'At least one category must be selected';
+    if (audiobookCategories.length === 0) {
+      newErrors.audiobookCategories = 'At least one audiobook category must be selected';
+    }
+
+    if (ebookCategories.length === 0) {
+      newErrors.ebookCategories = 'At least one ebook category must be selected';
     }
 
     setErrors(newErrors);
@@ -124,6 +148,12 @@ export function IndexerConfigModal({
 
   const handleSave = () => {
     if (!validate()) {
+      // If there's a category error, switch to the relevant tab
+      if (errors.audiobookCategories && activeTab !== 'audiobook') {
+        setActiveTab('audiobook');
+      } else if (errors.ebookCategories && activeTab !== 'ebook') {
+        setActiveTab('ebook');
+      }
       return;
     }
 
@@ -133,7 +163,8 @@ export function IndexerConfigModal({
       protocol: indexer.protocol,
       priority,
       rssEnabled: indexer.supportsRss ? rssEnabled : false,
-      categories: selectedCategories,
+      audiobookCategories,
+      ebookCategories,
     };
 
     // Add protocol-specific fields
@@ -167,6 +198,12 @@ export function IndexerConfigModal({
       }
     }
   };
+
+  // Get the current categories based on active tab
+  const currentCategories = activeTab === 'audiobook' ? audiobookCategories : ebookCategories;
+  const setCurrentCategories = activeTab === 'audiobook' ? setAudiobookCategories : setEbookCategories;
+  const currentError = activeTab === 'audiobook' ? errors.audiobookCategories : errors.ebookCategories;
+  const defaultForTab = activeTab === 'audiobook' ? DEFAULT_AUDIOBOOK_CATEGORIES : DEFAULT_EBOOK_CATEGORIES;
 
   return (
     <Modal
@@ -287,23 +324,62 @@ export function IndexerConfigModal({
           )}
         </div>
 
-        {/* Categories */}
+        {/* Categories with Tabs */}
         <div>
           <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">
             Categories
           </label>
-          <div className="max-h-96 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-4">
+
+          {/* Tab Navigation */}
+          <div className="flex border-b border-gray-200 dark:border-gray-700 mb-4">
+            <button
+              type="button"
+              onClick={() => setActiveTab('audiobook')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'audiobook'
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+              }`}
+            >
+              AudioBook
+              {errors.audiobookCategories && (
+                <span className="ml-2 text-red-500">!</span>
+              )}
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('ebook')}
+              className={`px-4 py-2 text-sm font-medium border-b-2 transition-colors ${
+                activeTab === 'ebook'
+                  ? 'border-blue-500 text-blue-600 dark:text-blue-400'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 hover:border-gray-300'
+              }`}
+            >
+              EBook
+              {errors.ebookCategories && (
+                <span className="ml-2 text-red-500">!</span>
+              )}
+            </button>
+          </div>
+
+          {/* Tab Content */}
+          <div className="max-h-72 overflow-y-auto border border-gray-200 dark:border-gray-700 rounded-lg p-4">
             <CategoryTreeView
-              selectedCategories={selectedCategories}
-              onChange={setSelectedCategories}
+              selectedCategories={currentCategories}
+              onChange={setCurrentCategories}
+              defaultCategories={defaultForTab}
             />
           </div>
+
           <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">
-            Select categories to search on this indexer. Parent selection locks all children as selected.
+            {activeTab === 'audiobook'
+              ? 'Categories to search for audiobooks. Default: Audio/Audiobook [3030]'
+              : 'Categories to search for e-books. Default: Books/EBook [7020]'}
           </p>
-          {errors.categories && (
+
+          {currentError && (
             <p className="text-sm text-red-600 dark:text-red-400 mt-1">
-              {errors.categories}
+              {currentError}
             </p>
           )}
         </div>

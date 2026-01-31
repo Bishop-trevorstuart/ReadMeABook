@@ -16,12 +16,15 @@ import {
 interface CategoryTreeViewProps {
   selectedCategories: number[];
   onChange: (categories: number[]) => void;
+  defaultCategories?: number[]; // Categories to show "Default" badge for (e.g., [3030] for audiobook, [7020] for ebook)
 }
 
 export function CategoryTreeView({
   selectedCategories,
   onChange,
+  defaultCategories = [3030], // Default to audiobook category for backwards compatibility
 }: CategoryTreeViewProps) {
+  const isDefaultCategory = (categoryId: number) => defaultCategories.includes(categoryId);
   const handleParentToggle = (parentId: number) => {
     const childIds = getChildIds(parentId);
     const allChildrenSelected = areAllChildrenSelected(parentId, selectedCategories);
@@ -75,7 +78,7 @@ export function CategoryTreeView({
               <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
                 [{category.id}]
               </span>
-              {category.id === 3030 && (
+              {isDefaultCategory(category.id) && (
                 <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full">
                   Default
                 </span>
@@ -109,7 +112,7 @@ export function CategoryTreeView({
                     <span className="text-xs font-mono text-gray-400 dark:text-gray-500">
                       [{child.id}]
                     </span>
-                    {child.id === 3030 && (
+                    {isDefaultCategory(child.id) && (
                       <span className="text-xs px-2 py-0.5 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-full">
                         Default
                       </span>

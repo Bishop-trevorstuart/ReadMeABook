@@ -26,7 +26,8 @@ interface SelectedIndexer {
   seedingTimeMinutes?: number; // Torrents only
   removeAfterProcessing?: boolean; // Usenet only
   rssEnabled: boolean;
-  categories: number[];
+  audiobookCategories: number[]; // Categories for audiobook searches
+  ebookCategories: number[]; // Categories for ebook searches
 }
 
 export function ProwlarrStep({

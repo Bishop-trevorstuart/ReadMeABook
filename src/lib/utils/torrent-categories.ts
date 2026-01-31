@@ -36,7 +36,11 @@ export const TORRENT_CATEGORIES: TorrentCategory[] = [
   },
 ];
 
-export const DEFAULT_CATEGORIES = [3030]; // Audio/Audiobook
+export const DEFAULT_AUDIOBOOK_CATEGORIES = [3030]; // Audio/Audiobook
+export const DEFAULT_EBOOK_CATEGORIES = [7020]; // Books/EBook
+
+// Legacy alias for backwards compatibility
+export const DEFAULT_CATEGORIES = DEFAULT_AUDIOBOOK_CATEGORIES;
 
 /**
  * Get all child IDs for a parent category

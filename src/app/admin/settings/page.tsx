@@ -106,7 +106,8 @@ export default function AdminSettings() {
               protocol: idx.protocol,
               priority: idx.priority,
               rssEnabled: idx.rssEnabled,
-              categories: idx.categories || [3030],
+              audiobookCategories: idx.audiobookCategories || [3030],
+              ebookCategories: idx.ebookCategories || [7020],
             };
 
             // Add protocol-specific fields

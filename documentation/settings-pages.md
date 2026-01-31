@@ -66,11 +66,63 @@ src/app/admin/settings/
 
 1. **Plex** - URL, token (masked), library ID, Audible region, filesystem scan trigger toggle
 2. **Audiobookshelf** - URL, API token (masked), library ID, Audible region, filesystem scan trigger toggle
-3. **Prowlarr** - URL, API key (masked), indexer selection with priority, seeding time, RSS monitoring toggle
+3. **Prowlarr** - URL, API key (masked), indexer selection with priority, seeding time, RSS monitoring toggle, **audiobook/ebook categories per indexer**
 4. **Download Client** - Type, URL, credentials (masked)
 5. **Paths** - Download + media directories, audiobook organization template, metadata tagging toggle, chapter merging toggle
-6. **BookDate** - AI provider, API key (encrypted), model selection, library scope, custom prompt, swipe history
-7. **Notifications** - Multiple backends (Discord, Pushover), event subscriptions, test functionality
+6. **E-book Sidecar** - Multi-source ebook downloads (Anna's Archive + Indexer Search), preferred format
+7. **BookDate** - AI provider, API key (encrypted), model selection, library scope, custom prompt, swipe history
+8. **Notifications** - Multiple backends (Discord, Pushover), event subscriptions, test functionality
+
+## E-book Sidecar
+
+**Purpose:** Configure ebook download sources and preferences to accompany audiobook downloads.
+
+**Tab Structure (3 sections):**
+
+1. **Anna's Archive Section**
+   - Enable toggle for Anna's Archive downloads
+   - Base URL (default: `https://annas-archive.li`)
+   - FlareSolverr URL (optional, for Cloudflare bypass)
+
+2. **Indexer Search Section**
+   - Enable toggle for indexer-based ebook search (not yet implemented)
+   - Hint directing users to Indexers tab for category configuration
+
+3. **General Settings Section** (visible when any source enabled)
+   - Preferred format: EPUB (recommended), PDF, MOBI, AZW3, Any
+
+**Configuration Keys:**
+| Key | Default | Description |
+|-----|---------|-------------|
+| `ebook_annas_archive_enabled` | `false` | Enable Anna's Archive |
+| `ebook_indexer_search_enabled` | `false` | Enable Indexer Search (stubbed) |
+| `ebook_sidecar_preferred_format` | `epub` | Preferred format |
+| `ebook_sidecar_base_url` | `https://annas-archive.li` | Anna's Archive mirror |
+| `ebook_sidecar_flaresolverr_url` | `` | FlareSolverr URL |
+
+**Behavior:**
+- If Anna's Archive enabled → Downloads work (current implementation)
+- If only Indexer Search enabled → Gracefully logs "not yet implemented"
+- If both disabled → Ebook downloads completely off
+
+## Indexer Categories (Tabbed)
+
+**Purpose:** Configure separate category sets for audiobook and ebook searches per indexer.
+
+**UI:** Edit Indexer modal has Categories section with two tabs:
+- **AudioBook tab** - Categories for audiobook searches (default: `[3030]`)
+- **EBook tab** - Categories for ebook searches (default: `[7020]`)
+
+**Storage:** `prowlarr_indexers` JSON config stores:
+```json
+{
+  "id": 1,
+  "name": "MyIndexer",
+  "audiobookCategories": [3030],
+  "ebookCategories": [7020],
+  ...
+}
+```
 
 ## Audible Region
 

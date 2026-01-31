@@ -13,8 +13,8 @@ export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
     return requireAdmin(req, async () => {
       try {
-        // Parse request body
-        const { enabled, format, baseUrl, flaresolverrUrl } = await request.json();
+        // Parse request body - new structure with separate source toggles
+        const { annasArchiveEnabled, indexerSearchEnabled, format, baseUrl, flaresolverrUrl } = await request.json();
 
         // Validate format
         const validFormats = ['epub', 'pdf', 'mobi', 'azw3', 'any'];
@@ -25,8 +25,8 @@ export async function PUT(request: NextRequest) {
           );
         }
 
-        // Validate baseUrl (basic check)
-        if (baseUrl && !baseUrl.startsWith('http')) {
+        // Validate baseUrl (basic check) - only required if Anna's Archive is enabled
+        if (annasArchiveEnabled && baseUrl && !baseUrl.startsWith('http')) {
           return NextResponse.json(
             { error: 'Base URL must start with http:// or https://' },
             { status: 400 }
@@ -46,23 +46,32 @@ export async function PUT(request: NextRequest) {
         const configService = getConfigService();
 
         const configs = [
+          // New granular source toggles
           {
-            key: 'ebook_sidecar_enabled',
-            value: enabled ? 'true' : 'false',
+            key: 'ebook_annas_archive_enabled',
+            value: annasArchiveEnabled ? 'true' : 'false',
             category: 'ebook',
-            description: 'Enable e-book sidecar downloads from Annas Archive',
+            description: 'Enable e-book downloads from Anna\'s Archive',
           },
+          {
+            key: 'ebook_indexer_search_enabled',
+            value: indexerSearchEnabled ? 'true' : 'false',
+            category: 'ebook',
+            description: 'Enable e-book downloads via indexer search (Prowlarr)',
+          },
+          // General settings
           {
             key: 'ebook_sidecar_preferred_format',
             value: format || 'epub',
             category: 'ebook',
             description: 'Preferred e-book format',
           },
+          // Anna's Archive specific settings
           {
             key: 'ebook_sidecar_base_url',
             value: baseUrl || 'https://annas-archive.li',
             category: 'ebook',
-            description: 'Base URL for Annas Archive',
+            description: 'Base URL for Anna\'s Archive',
           },
           {
             key: 'ebook_sidecar_flaresolverr_url',

@@ -100,10 +100,16 @@ export async function GET(request: NextRequest) {
         chapterMergingEnabled: configMap.get('chapter_merging_enabled') === 'true',
       },
       ebook: {
-        enabled: configMap.get('ebook_sidecar_enabled') === 'true',
-        preferredFormat: configMap.get('ebook_sidecar_preferred_format') || 'epub',
+        // New granular source toggles (with migration from legacy ebook_sidecar_enabled)
+        annasArchiveEnabled: configMap.get('ebook_annas_archive_enabled') === 'true' ||
+          // Migration: if old key is true and new key doesn't exist, use old value
+          (configMap.get('ebook_annas_archive_enabled') === undefined && configMap.get('ebook_sidecar_enabled') === 'true'),
+        indexerSearchEnabled: configMap.get('ebook_indexer_search_enabled') === 'true',
+        // Anna's Archive specific settings
         baseUrl: configMap.get('ebook_sidecar_base_url') || 'https://annas-archive.li',
         flaresolverrUrl: configMap.get('ebook_sidecar_flaresolverr_url') || '',
+        // General settings
+        preferredFormat: configMap.get('ebook_sidecar_preferred_format') || 'epub',
       },
       general: {
         appName: configMap.get('app_name') || 'ReadMeABook',

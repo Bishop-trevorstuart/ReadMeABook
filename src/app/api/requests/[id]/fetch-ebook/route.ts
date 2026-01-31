@@ -22,14 +22,30 @@ export async function POST(
       try {
         const { id: parentRequestId } = await params;
 
-        // Check if e-book sidecar is enabled
-        const ebookEnabledConfig = await prisma.configuration.findUnique({
-          where: { key: 'ebook_sidecar_enabled' },
-        });
+        // Check which ebook sources are enabled
+        const [annasArchiveConfig, indexerSearchConfig, legacyConfig] = await Promise.all([
+          prisma.configuration.findUnique({ where: { key: 'ebook_annas_archive_enabled' } }),
+          prisma.configuration.findUnique({ where: { key: 'ebook_indexer_search_enabled' } }),
+          prisma.configuration.findUnique({ where: { key: 'ebook_sidecar_enabled' } }),
+        ]);
 
-        if (ebookEnabledConfig?.value !== 'true') {
+        // Legacy migration: check old key if new keys don't exist
+        const isAnnasArchiveEnabled = annasArchiveConfig?.value === 'true' ||
+          (annasArchiveConfig === null && legacyConfig?.value === 'true');
+        const isIndexerSearchEnabled = indexerSearchConfig?.value === 'true';
+
+        // If no sources are enabled, return error
+        if (!isAnnasArchiveEnabled && !isIndexerSearchEnabled) {
           return NextResponse.json(
-            { error: 'E-book sidecar feature is not enabled' },
+            { error: 'E-book sidecar feature is not enabled (no sources configured)' },
+            { status: 400 }
+          );
+        }
+
+        // If only indexer search is enabled (not yet implemented), return error
+        if (!isAnnasArchiveEnabled && isIndexerSearchEnabled) {
+          return NextResponse.json(
+            { error: 'E-book indexer search is not yet implemented. Enable Anna\'s Archive to fetch e-books.' },
             { status: 400 }
           );
         }
