@@ -4,12 +4,16 @@ set -e
 echo "🚀 ReadMeABook Unified Container Starting..."
 
 # ============================================================================
-# PUID/PGID USER REMAPPING (Hybrid approach)
+# PUID/PGID USER REMAPPING (Hybrid approach with gosu)
 # ============================================================================
 # Hybrid approach to support user file ownership while maintaining PostgreSQL compatibility:
 # - postgres user: Keep UID 103 (required by PostgreSQL), remap GID → PGID
-# - redis user:    Remap UID → PUID, GID → PGID
-# - node user:     Remap UID → PUID, GID → PGID
+# - redis user:    Remap UID → PUID, GID → PGID (also uses gosu at runtime)
+# - node user:     Remap UID → PUID, GID → PGID (also uses gosu at runtime)
+#
+# NOTE: We use gosu in app-start.sh and redis-start.sh to ensure the process
+# actually runs with the correct UID:GID. This fixes issues where PUID collides
+# with existing system users (e.g., PUID=65534 collides with 'nobody').
 #
 # Result:
 # - PostgreSQL data (103:PGID) - postgres user with shared group
@@ -309,7 +313,8 @@ export NODE_ENV="production"
 export PORT="3030"
 export HOSTNAME="0.0.0.0"
 
-# Persist environment variables for supervisord
+# Persist environment variables for supervisord and child processes
+# PUID/PGID are critical for gosu-based user switching in app-start.sh and redis-start.sh
 cat > /etc/environment <<EOF
 DATABASE_URL=$DATABASE_URL
 REDIS_URL=$REDIS_URL
@@ -322,6 +327,8 @@ LOG_LEVEL=$LOG_LEVEL
 NODE_ENV=$NODE_ENV
 PORT=$PORT
 HOSTNAME=$HOSTNAME
+PUID=${PUID:-}
+PGID=${PGID:-}
 EOF
 
 echo "✅ Environment configured"
@@ -353,9 +360,14 @@ if [ "$POSTGRES_PASSWORD" = "$(generate_secret)" ]; then
 fi
 echo ""
 echo "📊 Services starting:"
-echo "   - PostgreSQL (internal)"
-echo "   - Redis (internal)"
-echo "   - Next.js App (port 3030)"
+echo "   - PostgreSQL (internal, user=postgres)"
+echo "   - Redis (internal, UID:GID=${PUID:-102}:${PGID:-102})"
+echo "   - Next.js App (port 3030, UID:GID=${PUID:-1000}:${PGID:-1000})"
+if [ -n "$PUID" ] && [ -n "$PGID" ]; then
+    echo ""
+    echo "🔐 Using gosu for reliable UID:GID switching"
+    echo "   App and Redis will run as $PUID:$PGID"
+fi
 echo "============================================"
 echo ""
 

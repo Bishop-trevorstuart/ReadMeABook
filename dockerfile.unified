@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y curl gnupg && \
     curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc | gpg --dearmor -o /etc/apt/keyrings/postgresql.gpg && \
     echo "deb [signed-by=/etc/apt/keyrings/postgresql.gpg] http://apt.postgresql.org/pub/repos/apt bookworm-pgdg main" > /etc/apt/sources.list.d/postgresql.list
 
-# Install PostgreSQL, Redis, and supervisord
+# Install PostgreSQL, Redis, supervisord, and gosu (for reliable user switching)
 RUN apt-get update && apt-get install -y \
     postgresql-16 \
     postgresql-client-16 \
@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     openssl \
     ffmpeg \
     locales \
+    gosu \
     && sed -i 's/^# \(en_US.UTF-8 UTF-8\)/\1/' /etc/locale.gen \
     && locale-gen en_US.UTF-8 \
     && update-locale LANG=en_US.UTF-8 LC_ALL=en_US.UTF-8 \
@@ -105,6 +106,11 @@ RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 COPY --chown=root:root docker/unified/app-start.sh /app/app-start.sh
 # Convert line endings and make executable
 RUN sed -i 's/\r$//' /app/app-start.sh && chmod +x /app/app-start.sh
+
+# Copy redis startup wrapper
+COPY --chown=root:root docker/unified/redis-start.sh /app/redis-start.sh
+# Convert line endings and make executable
+RUN sed -i 's/\r$//' /app/redis-start.sh && chmod +x /app/redis-start.sh
 
 # Expose app port
 EXPOSE 3030

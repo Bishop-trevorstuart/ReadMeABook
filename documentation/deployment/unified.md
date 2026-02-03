@@ -691,6 +691,20 @@ docker volume rm readmeabook-pgdata readmeabook-redis readmeabook-cache
   - Let Docker create directories on first run (they'll have correct ownership)
 - Note: Works fine on WSL2 when using Docker volumes or letting container create directories
 
+**19. PUID collision causes wrong GID (EACCES: permission denied, mkdir)**
+- Issue: File organization fails with `EACCES: permission denied, mkdir '/media/...'` even though PUID/PGID are set correctly
+- Symptoms: `docker exec -u $PUID:$PGID container mkdir /media/test` works, but the app fails
+- Root cause: When PUID collides with an existing system user (e.g., PUID=65534 collides with `nobody`), the `usermod` command creates two users with the same UID. When supervisord resolves `user=node` from /etc/passwd, it may resolve to the wrong user's GID
+- Example: User sets PUID=65534 (nobody), PGID=321601206 (AD group). App runs with UID=65534 but GID=65534 (nogroup) instead of GID=321601206
+- Diagnosis: Run `docker exec container ps ax -o user,pid,group,gid,comm` - if GID column shows wrong value, this is the issue
+- Fix: Use `gosu` for reliable UID:GID switching that bypasses username resolution
+  - Added `gosu` package to Dockerfile
+  - Created `app-start.sh` and `redis-start.sh` wrapper scripts that use `gosu $PUID:$PGID` to switch users
+  - Supervisord now starts these wrappers as root, and gosu switches to the exact UID:GID
+  - PUID/PGID are passed via /etc/environment to the wrapper scripts
+- Verification: After fix, `ps ax -o user,pid,group,gid,comm` will show correct GID for app and redis processes
+- Note: This primarily affects users with complex setups (NFS mounts, AD/SSSD groups, PUID=65534)
+
 ## Related
 
 - [Multi-container deployment](docker.md)
