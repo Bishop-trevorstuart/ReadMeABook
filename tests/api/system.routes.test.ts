@@ -57,16 +57,17 @@ describe('System routes', () => {
   });
 
   it('returns version info from environment', async () => {
-    process.env.APP_VERSION = 'abcdef123456';
+    process.env.APP_VERSION = '1.0.0';
+    process.env.GIT_COMMIT = 'abcdef123456';
     process.env.BUILD_DATE = '2025-01-01';
 
     const { GET } = await import('@/app/api/version/route');
     const response = await GET();
     const payload = await response.json();
 
-    expect(payload.shortCommit).toBe('abcdef1');
+    expect(payload.version).toBe('v1.0.0');
+    expect(payload.fullVersion).toBe('1.0.0');
+    expect(payload.commit).toBe('abcdef123456');
     expect(payload.buildDate).toBe('2025-01-01');
   });
 });
-
-

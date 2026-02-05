@@ -101,6 +101,7 @@
 - **Docker Compose setup (multi-container)** → [deployment/docker.md](deployment/docker.md)
 - **Unified container (all-in-one)** → [deployment/unified.md](deployment/unified.md)
 - **Environment variables, volumes** → [deployment/docker.md](deployment/docker.md)
+- **Volume mapping (download clients)** → [deployment/volume-mapping.md](deployment/volume-mapping.md)
 - **Database setup (Prisma), migrations** → [deployment/docker.md](deployment/docker.md)
 
 ## Testing
@@ -132,6 +133,8 @@
 **"How do I customize audiobook folder organization?"** → [settings-pages.md](settings-pages.md#audiobook-organization-template), [phase3/file-organization.md](phase3/file-organization.md#target-structure)
 **"How do I deploy?"** → [deployment/docker.md](deployment/docker.md) (multi-container), [deployment/unified.md](deployment/unified.md) (all-in-one)
 **"How do I use the unified container?"** → [deployment/unified.md](deployment/unified.md)
+**"Why can't RMAB find my downloaded files?"** → [deployment/volume-mapping.md](deployment/volume-mapping.md)
+**"How do I set up volume mapping for qBittorrent/SABnzbd?"** → [deployment/volume-mapping.md](deployment/volume-mapping.md)
 **"OAuth redirects to localhost / PUBLIC_URL not working"** → [backend/services/environment.md](backend/services/environment.md)
 **"What environment variables do I need?"** → [backend/services/environment.md](backend/services/environment.md)
 **"How does chapter merging work?"** → [features/chapter-merging.md](features/chapter-merging.md)

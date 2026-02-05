@@ -215,7 +215,10 @@ export class AudibleService {
         logger.info(` Fetching page ${page}/${maxPages}...`);
 
         const response = await this.fetchWithRetry('/adblbestsellers', {
-          params: page > 1 ? { page } : {},
+          params: {
+            ipRedirectOverride: 'true', // Explicitly include to prevent IP-based region redirects
+            ...(page > 1 ? { page } : {}),
+          },
         });
         const $ = cheerio.load(response.data);
 
@@ -307,7 +310,10 @@ export class AudibleService {
         logger.info(` Fetching page ${page}/${maxPages}...`);
 
         const response = await this.fetchWithRetry('/newreleases', {
-          params: page > 1 ? { page } : {},
+          params: {
+            ipRedirectOverride: 'true', // Explicitly include to prevent IP-based region redirects
+            ...(page > 1 ? { page } : {}),
+          },
         });
         const $ = cheerio.load(response.data);
 
@@ -392,6 +398,7 @@ export class AudibleService {
 
       const response = await this.fetchWithRetry('/search', {
         params: {
+          ipRedirectOverride: 'true', // Explicitly include to prevent IP-based region redirects
           keywords: query,
           page,
         },
@@ -572,7 +579,11 @@ export class AudibleService {
    */
   private async scrapeAudibleDetails(asin: string): Promise<AudibleAudiobook | null> {
     try {
-      const response = await this.fetchWithRetry(`/pd/${asin}`);
+      const response = await this.fetchWithRetry(`/pd/${asin}`, {
+        params: {
+          ipRedirectOverride: 'true', // Explicitly include to prevent IP-based region redirects
+        },
+      });
       const $ = cheerio.load(response.data);
 
       // Initialize result object

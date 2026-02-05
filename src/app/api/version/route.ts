@@ -6,18 +6,14 @@
 import { NextResponse } from 'next/server';
 
 export async function GET() {
-  const gitCommit = process.env.APP_VERSION || 'unknown';
+  const appVersion = process.env.APP_VERSION || 'unknown';
+  const gitCommit = process.env.GIT_COMMIT || 'unknown';
   const buildDate = process.env.BUILD_DATE || 'unknown';
 
-  // Get short commit hash (first 7 characters)
-  const shortCommit = gitCommit !== 'unknown' && gitCommit.length >= 7
-    ? gitCommit.substring(0, 7)
-    : gitCommit;
-
   return NextResponse.json({
-    version: `v.${shortCommit}`,
+    version: appVersion !== 'unknown' ? `v${appVersion}` : 'vDEV',
+    fullVersion: appVersion,
     commit: gitCommit,
-    shortCommit,
     buildDate,
   });
 }

@@ -77,6 +77,8 @@ docker compose up -d
 
 Open http://localhost:3030 and follow the setup wizard.
 
+**Important:** Your download client (qBittorrent/SABnzbd) and RMAB must see files at the same path. See the [Volume Mapping Guide](documentation/deployment/volume-mapping.md) if downloads aren't being detected.
+
 ## Screenshots
 
 <img WIDTH="720" alt="image" src="screenshots/HOMEPAGE.png" />

@@ -9,11 +9,17 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import { VersionBadge } from '@/components/ui/VersionBadge';
 
+const originalVersion = process.env.NEXT_PUBLIC_APP_VERSION;
 const originalCommit = process.env.NEXT_PUBLIC_GIT_COMMIT;
 
 describe('VersionBadge', () => {
   afterEach(() => {
     vi.unstubAllGlobals();
+    if (originalVersion === undefined) {
+      delete process.env.NEXT_PUBLIC_APP_VERSION;
+    } else {
+      process.env.NEXT_PUBLIC_APP_VERSION = originalVersion;
+    }
     if (originalCommit === undefined) {
       delete process.env.NEXT_PUBLIC_GIT_COMMIT;
     } else {
@@ -21,32 +27,33 @@ describe('VersionBadge', () => {
     }
   });
 
-  it('renders short version from build-time commit', async () => {
+  it('renders semantic version from build-time env var', async () => {
+    process.env.NEXT_PUBLIC_APP_VERSION = '1.0.0';
     process.env.NEXT_PUBLIC_GIT_COMMIT = 'abcdef1234';
     const fetchMock = vi.fn();
     vi.stubGlobal('fetch', fetchMock);
 
     render(<VersionBadge />);
 
-    expect(await screen.findByText('v.abcdef1')).toBeInTheDocument();
+    expect(await screen.findByText('v1.0.0')).toBeInTheDocument();
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
-  it('falls back to API when build-time commit is unavailable', async () => {
-    process.env.NEXT_PUBLIC_GIT_COMMIT = 'unknown';
+  it('falls back to API when build-time version is unavailable', async () => {
+    process.env.NEXT_PUBLIC_APP_VERSION = 'unknown';
     const fetchMock = vi.fn().mockResolvedValue({
-      json: async () => ({ version: 'v.1.2.3' }),
+      json: async () => ({ version: 'v1.2.3', commit: 'abc1234' }),
     });
     vi.stubGlobal('fetch', fetchMock);
 
     render(<VersionBadge />);
 
-    expect(await screen.findByText('v.1.2.3')).toBeInTheDocument();
+    expect(await screen.findByText('v1.2.3')).toBeInTheDocument();
     expect(fetchMock).toHaveBeenCalledWith('/api/version');
   });
 
   it('shows dev version when API fetch fails', async () => {
-    process.env.NEXT_PUBLIC_GIT_COMMIT = 'unknown';
+    process.env.NEXT_PUBLIC_APP_VERSION = 'unknown';
     const fetchMock = vi.fn().mockRejectedValue(new Error('down'));
     const errorMock = vi.spyOn(console, 'error').mockImplementation(() => undefined);
     vi.stubGlobal('fetch', fetchMock);
@@ -54,7 +61,7 @@ describe('VersionBadge', () => {
     render(<VersionBadge />);
 
     await waitFor(() => {
-      expect(screen.getByText('v.dev')).toBeInTheDocument();
+      expect(screen.getByText('vDEV')).toBeInTheDocument();
     });
     expect(errorMock).toHaveBeenCalledWith('Failed to fetch version:', expect.any(Error));
   });

@@ -2,8 +2,6 @@ name: Build and Publish Unified Docker Image
 
 on:
   push:
-    branches:
-      - main
     tags:
       - 'v*'
   workflow_dispatch:
@@ -62,6 +60,7 @@ jobs:
       - name: Capture version information
         id: version
         run: |
+          echo "app_version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
           echo "git_commit=$(git rev-parse --short=7 HEAD)" >> $GITHUB_OUTPUT
           echo "build_date=$(date -u +"%Y-%m-%dT%H:%M:%SZ")" >> $GITHUB_OUTPUT
 
@@ -77,6 +76,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: |
+            APP_VERSION=${{ steps.version.outputs.app_version }}
             GIT_COMMIT=${{ steps.version.outputs.git_commit }}
             BUILD_DATE=${{ steps.version.outputs.build_date }}
 
@@ -110,12 +110,12 @@ jobs:
             -d '{
               "embeds": [{
                 "title": "📦 Docker Image Published",
-                "description": "A new version of **ReadMeABook** has been built and published to GitHub Container Registry.",
+                "description": "**ReadMeABook v${{ steps.version.outputs.app_version }}** has been built and published to GitHub Container Registry.",
                 "color": 5763719,
                 "fields": [
                   {
-                    "name": "🏷️ Image Tag",
-                    "value": "`sha-${{ steps.version.outputs.git_commit }}`",
+                    "name": "🔖 Version",
+                    "value": "`v${{ steps.version.outputs.app_version }}`",
                     "inline": true
                   },
                   {
@@ -130,12 +130,12 @@ jobs:
                   },
                   {
                     "name": "📥 Pull Command",
-                    "value": "```docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:sha-${{ steps.version.outputs.git_commit }}```",
+                    "value": "```docker pull ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest```",
                     "inline": false
                   }
                 ],
                 "footer": {
-                  "text": "ReadMeABook CI/CD • Built with GitHub Actions"
+                  "text": "ReadMeABook v${{ steps.version.outputs.app_version }} • Built with GitHub Actions"
                 },
                 "timestamp": "${{ steps.version.outputs.build_date }}"
               }]
