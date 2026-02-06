@@ -88,10 +88,10 @@ export class AudibleService {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
-          'Cookie': 'lc-acbus=en_US', // Force English locale (prevents IP-based language redirect for non-US IPs)
         },
         params: {
           ipRedirectOverride: 'true', // Prevent IP-based region redirects
+          language: 'english', // Force English locale (prevents IP-based language serving for non-English IPs)
         },
       });
 
@@ -108,116 +108,14 @@ export class AudibleService {
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
           'Accept-Language': 'en-US,en;q=0.9',
-          'Cookie': 'lc-acbus=en_US', // Force English locale
         },
         params: {
           ipRedirectOverride: 'true',
+          language: 'english',
         },
       });
       this.initialized = true;
     }
-  }
-
-  /**
-   * Detect and correct non-English locale pages from Audible.
-   *
-   * Audible uses IP geolocation to serve locale-specific pages by adding culture
-   * codes to URLs (e.g., /adblbestsellers → /es_US/charts/best for Spanish-speaking IPs).
-   * ipRedirectOverride only prevents region redirects (audible.com → audible.co.uk),
-   * NOT language/locale redirects within the same region.
-   *
-   * Strategy (data-driven):
-   * 1. Check response URL for any non-English culture code (xx_YY where xx != 'en')
-   * 2. Parse the page's locale picker (adbl-toggle-chip elements) to find the English URL
-   * 3. Re-request using Audible's own English URL (from the picker's data-value attribute)
-   * 4. Fallback: strip culture code from URL + add language=en_US param if no picker found
-   *
-   * Returns corrected response, or null if no correction needed.
-   */
-  private async handleLocaleRedirect(response: any): Promise<any | null> {
-    try {
-      // Extract final URL after all redirects (Node.js http internals)
-      const finalUrl: string = response.request?.res?.responseUrl ||
-                               response.request?._redirectable?._currentUrl || '';
-
-      if (!finalUrl) return null;
-
-      // Check for non-English culture code in URL path
-      // Culture codes: xx_YY (e.g., es_US, fr_CA, pt_BR, de_DE, ja_JP)
-      // Match in path segment: must follow a / and be followed by / or end-of-path or query string
-      const localeMatch = finalUrl.match(/\/([a-z]{2}_[A-Z]{2})(\/|$|\?)/);
-      if (!localeMatch || localeMatch[1].startsWith('en')) {
-        return null; // No culture code found, or already English
-      }
-
-      const detectedLocale = localeMatch[1];
-      logger.warn(`Detected non-English locale (${detectedLocale}) in Audible response URL: ${finalUrl}`);
-
-      // --- Primary strategy: parse the locale picker from the page HTML ---
-      // Audible pages include a locale picker with <adbl-toggle-chip> web components:
-      //   <adbl-toggle-chip data-locale="en_CA" data-value="/charts/best?language=en_CA">English</adbl-toggle-chip>
-      //   <adbl-toggle-chip data-locale="fr_CA" data-value="/fr_CA/charts/best?language=fr_CA">Français</adbl-toggle-chip>
-      // The English option's data-value gives us the exact correct English URL for this page.
-      const $ = cheerio.load(response.data);
-      const englishChip = $('adbl-toggle-chip[data-locale^="en"]').first();
-
-      if (englishChip.length > 0) {
-        const englishPath = englishChip.attr('data-value');
-        const englishLocale = englishChip.attr('data-locale');
-
-        if (englishPath) {
-          logger.info(`Found English option (${englishLocale}) in locale picker: ${englishPath}`);
-
-          // Re-request using the English URL from the picker
-          // data-value is a relative path (e.g., "/charts/best?language=en_CA")
-          // Client defaults add ipRedirectOverride=true automatically
-          const correctedResponse = await this.client.get(englishPath);
-
-          // Verify the correction actually resolved to English
-          const correctedUrl: string = correctedResponse.request?.res?.responseUrl ||
-                                       correctedResponse.request?._redirectable?._currentUrl || '';
-          if (correctedUrl) {
-            const verifyMatch = correctedUrl.match(/\/([a-z]{2}_[A-Z]{2})(\/|$|\?)/);
-            if (verifyMatch && !verifyMatch[1].startsWith('en')) {
-              logger.warn(`Locale correction incomplete — corrected URL still contains non-English locale (${verifyMatch[1]}): ${correctedUrl}`);
-            } else {
-              logger.info(`Locale correction successful (${detectedLocale} → ${englishLocale})`);
-            }
-          }
-
-          return correctedResponse;
-        }
-
-        logger.warn('English locale chip found but missing data-value attribute');
-      } else {
-        logger.warn('No locale picker found on page, attempting fallback URL rewrite');
-      }
-
-      // --- Fallback strategy: URL rewrite ---
-      // Strip the non-English culture code from the path and add language=en_US param.
-      // This mirrors the locale picker pattern: English URLs have no prefix + language param.
-      try {
-        const urlObj = new URL(finalUrl);
-        urlObj.pathname = urlObj.pathname.replace(`/${detectedLocale}`, '');
-        urlObj.searchParams.set('language', 'en_US');
-
-        // Build relative path (client will prepend baseURL)
-        const fallbackPath = urlObj.pathname + urlObj.search;
-        logger.info(`Fallback: re-requesting with URL rewrite: ${fallbackPath}`);
-
-        return await this.client.get(fallbackPath);
-      } catch (urlError) {
-        logger.warn('Fallback URL rewrite failed', {
-          error: urlError instanceof Error ? urlError.message : String(urlError),
-        });
-      }
-    } catch (error) {
-      logger.debug('Locale correction failed entirely, using original response', {
-        error: error instanceof Error ? error.message : String(error),
-      });
-    }
-
-    return null;
   }
 
   /**
@@ -233,10 +131,7 @@ export class AudibleService {
 
     for (let attempt = 0; attempt <= maxRetries; attempt++) {
       try {
-        const response = await this.client.get(url, config);
-
-        // Check if redirected to non-English locale (e.g., /es_US/) and correct it
-        return await this.handleLocaleRedirect(response) || response;
+        return await this.client.get(url, config);
       } catch (error: any) {
         lastError = error;
         const status = error.response?.status;

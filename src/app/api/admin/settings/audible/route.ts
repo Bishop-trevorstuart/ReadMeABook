@@ -8,11 +8,12 @@ import { requireAuth, requireAdmin, AuthenticatedRequest } from '@/lib/middlewar
 import { getConfigService } from '@/lib/services/config.service';
 import { getAudibleService } from '@/lib/integrations/audible.service';
 import { getJobQueueService } from '@/lib/services/job-queue.service';
+import { AUDIBLE_REGIONS } from '@/lib/types/audible';
 import { RMABLogger } from '@/lib/utils/logger';
 
 const logger = RMABLogger.create('API.Admin.Settings.Audible');
 
-const VALID_REGIONS = ['us', 'ca', 'uk', 'au', 'in', 'de'];
+const VALID_REGIONS = Object.keys(AUDIBLE_REGIONS);
 
 export async function PUT(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
@@ -24,7 +25,7 @@ export async function PUT(request: NextRequest) {
         if (!region || !VALID_REGIONS.includes(region)) {
           logger.warn('Invalid region provided', { region });
           return NextResponse.json(
-            { success: false, error: 'Invalid Audible region. Must be one of: us, ca, uk, au, in, de' },
+            { success: false, error: `Invalid Audible region. Must be one of: ${VALID_REGIONS.join(', ')}` },
             { status: 400 }
           );
         }

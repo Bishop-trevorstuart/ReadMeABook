@@ -10,6 +10,7 @@ export interface AudibleRegionConfig {
   name: string;
   baseUrl: string;
   audnexusParam: string;
+  isEnglish: boolean;
 }
 
 export const AUDIBLE_REGIONS: Record<AudibleRegion, AudibleRegionConfig> = {
@@ -18,36 +19,42 @@ export const AUDIBLE_REGIONS: Record<AudibleRegion, AudibleRegionConfig> = {
     name: 'United States',
     baseUrl: 'https://www.audible.com',
     audnexusParam: 'us',
+    isEnglish: true,
   },
   ca: {
     code: 'ca',
     name: 'Canada',
     baseUrl: 'https://www.audible.ca',
     audnexusParam: 'ca',
+    isEnglish: true,
   },
   uk: {
     code: 'uk',
     name: 'United Kingdom',
     baseUrl: 'https://www.audible.co.uk',
     audnexusParam: 'uk',
+    isEnglish: true,
   },
   au: {
     code: 'au',
     name: 'Australia',
     baseUrl: 'https://www.audible.com.au',
     audnexusParam: 'au',
+    isEnglish: true,
   },
   in: {
     code: 'in',
     name: 'India',
     baseUrl: 'https://www.audible.in',
     audnexusParam: 'in',
+    isEnglish: true,
   },
   de: {
     code: 'de',
     name: 'Germany',
     baseUrl: 'https://www.audible.de',
     audnexusParam: 'de',
+    isEnglish: false,
   },
 };
 

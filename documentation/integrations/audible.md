@@ -26,11 +26,18 @@ Audiobook metadata from Audnexus API (primary) and Audible.com scraping (fallbac
 Configurable Audible region for accurate metadata matching across different international Audible stores.
 
 **Supported Regions:**
-- United States (`us`) - `audible.com` (default)
-- Canada (`ca`) - `audible.ca`
-- United Kingdom (`uk`) - `audible.co.uk`
-- Australia (`au`) - `audible.com.au`
-- India (`in`) - `audible.in`
+- United States (`us`) - `audible.com` (default, English)
+- Canada (`ca`) - `audible.ca` (English)
+- United Kingdom (`uk`) - `audible.co.uk` (English)
+- Australia (`au`) - `audible.com.au` (English)
+- India (`in`) - `audible.in` (English)
+- Germany (`de`) - `audible.de` (non-English)
+
+**`isEnglish` Flag:**
+- Each region has `isEnglish: boolean` in `AudibleRegionConfig`
+- Non-English regions (`isEnglish: false`) display an amber warning in all region dropdowns (setup wizard + admin settings)
+- Warning text: "Many features such as search, discovery, and metadata matching are not yet fully supported for non-English regions."
+- Dropdown options for non-English regions show `*` suffix (e.g., "Germany *")
 
 **Why Regions Matter:**
 - Each Audible region uses different ASINs for the same audiobook
@@ -48,7 +55,7 @@ Configurable Audible region for accurate metadata matching across different inte
 - Dynamically builds base URL: `AUDIBLE_REGIONS[region].baseUrl`
 - Audnexus API calls include region parameter: `?region={code}`
 - IP redirect prevention: `?ipRedirectOverride=true` on all Audible requests (region only)
-- **Locale enforcement:** Cookie `lc-acbus=en_US` + `handleLocaleRedirect()` detects non-English culture codes in response URLs and re-requests using the English URL from Audible's locale picker
+- **Locale enforcement:** `?language=english` query parameter on all Audible requests (forces English content regardless of server IP geolocation)
 - Configuration service helper: `getAudibleRegion()` returns configured region
 - **Auto-detection of region changes**: Service checks config before each request and re-initializes if region changed
 - **Cache clearing**: When region changes, ConfigService cache and AudibleService initialization are cleared
@@ -228,12 +235,8 @@ interface EnrichedAudibleAudiobook extends AudibleAudiobook {
 - **Affects:** All Audiobookshelf metadata matching operations
 
 **Non-English locale pages served to users outside US (2026-02-05)**
-- **Problem:** Audible uses IP geolocation to add culture codes (e.g., `es_US`, `fr_CA`) to URLs, serving locale-specific pages. `ipRedirectOverride=true` only prevents region redirects (audible.com → audible.co.uk), NOT language/locale redirects within the same region.
-- **Impact:** Users self-hosting from non-English-speaking countries (e.g., Dominican Republic) got Spanish bestsellers/new releases on their homepage because the `audible_refresh` job scraped locale-redirected pages.
-- **Fix:** Three-layer defense in `AudibleService`:
-  1. **Cookie:** `lc-acbus=en_US` header hints English locale preference
-  2. **Locale picker detection (primary):** After every request, checks response URL for non-`en_*` culture codes (`xx_YY` pattern). If found, parses page HTML for Audible's `<adbl-toggle-chip>` locale picker, extracts the English option's `data-value` URL, and re-requests. Data-driven — uses Audible's own English URL rather than guessing.
-  3. **Fallback URL rewrite:** If no locale picker found, strips the culture code from the path and adds `language=en_US` query param (mirrors picker pattern).
-- **Verification:** After correction, validates the response URL no longer contains a non-English culture code and logs success/failure.
-- **Location:** `src/lib/integrations/audible.service.ts` — `handleLocaleRedirect()`, `initialize()`
-- **Affects:** All Audible scraping: popular, new releases, search, detail pages (via `fetchWithRetry`)
+- **Problem:** Audible uses IP geolocation to serve locale-specific pages (e.g., Spanish content for Dominican Republic IPs). `ipRedirectOverride=true` only prevents region redirects (audible.com → audible.co.uk), NOT language/locale changes.
+- **Impact:** Users self-hosting from non-English-speaking countries got non-English bestsellers/new releases on their homepage.
+- **Fix:** Added `language=english` query parameter to all Audible requests via axios default params. Audible respects this parameter and serves English content regardless of IP geolocation. Fails gracefully for regions where English isn't available.
+- **Location:** `src/lib/integrations/audible.service.ts` — `initialize()` (axios default params)
+- **Affects:** All Audible scraping: popular, new releases, search, detail pages

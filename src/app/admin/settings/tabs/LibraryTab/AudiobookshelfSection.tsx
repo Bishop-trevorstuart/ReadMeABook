@@ -6,6 +6,7 @@
 import { Input } from '@/components/ui/Input';
 import { Button } from '@/components/ui/Button';
 import { Settings, ABSLibrary } from '../../lib/types';
+import { AUDIBLE_REGIONS } from '@/lib/types/audible';
 
 interface AudiobookshelfSectionProps {
   settings: Settings;
@@ -161,13 +162,39 @@ export function AudiobookshelfSection({
           onChange={(e) => handleAudibleRegionChange(e.target.value)}
           className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500"
         >
-          <option value="us">United States</option>
-          <option value="ca">Canada</option>
-          <option value="uk">United Kingdom</option>
-          <option value="au">Australia</option>
-          <option value="in">India</option>
-          <option value="de">Germany</option>
+          {Object.values(AUDIBLE_REGIONS).map((region) => (
+            <option key={region.code} value={region.code}>
+              {region.name}{!region.isEnglish ? ' *' : ''}
+            </option>
+          ))}
         </select>
+        {AUDIBLE_REGIONS[settings.audibleRegion as keyof typeof AUDIBLE_REGIONS]?.isEnglish === false && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 rounded-lg p-4 border border-amber-200 dark:border-amber-800 mt-2">
+            <div className="flex gap-3">
+              <svg
+                className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5"
+                fill="currentColor"
+                viewBox="0 0 20 20"
+              >
+                <path
+                  fillRule="evenodd"
+                  d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z"
+                  clipRule="evenodd"
+                />
+              </svg>
+              <div>
+                <p className="text-sm font-medium text-amber-900 dark:text-amber-100">
+                  Non-English Region
+                </p>
+                <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                  Many features such as search, discovery, and metadata matching are not yet fully
+                  supported for non-English regions. You may still proceed, but expect limited
+                  functionality.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
         <p className="text-sm text-gray-500 dark:text-gray-400">
           Select the Audible region that matches your metadata engine (Audnexus/Audible Agent)
           configuration in Audiobookshelf. This ensures accurate book matching and metadata.
