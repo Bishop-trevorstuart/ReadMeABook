@@ -127,13 +127,14 @@ async function fetchHtml(
  * Test FlareSolverr connection
  */
 export async function testFlareSolverrConnection(
-  flaresolverrUrl: string
+  flaresolverrUrl: string,
+  baseUrl: string = 'https://annas-archive.li'
 ): Promise<{ success: boolean; message: string; responseTime?: number }> {
   const startTime = Date.now();
 
   try {
-    // Test with a simple request to Anna's Archive homepage
-    const testUrl = 'https://annas-archive.li/';
+    // Test with a simple request to the configured Anna's Archive base URL
+    const testUrl = baseUrl.endsWith('/') ? baseUrl : `${baseUrl}/`;
     const html = await fetchViaFlareSolverr(testUrl, flaresolverrUrl, 30000);
     const responseTime = Date.now() - startTime;
 

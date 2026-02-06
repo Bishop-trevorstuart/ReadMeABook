@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
   return requireAuth(request, async (req: AuthenticatedRequest) => {
     return requireAdmin(req, async () => {
       try {
-        const { url } = await request.json();
+        const { url, baseUrl } = await request.json();
 
         if (!url) {
           return NextResponse.json(
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
           );
         }
 
-        const result = await testFlareSolverrConnection(url);
+        const result = await testFlareSolverrConnection(url, baseUrl);
 
         return NextResponse.json(result);
       } catch (error) {

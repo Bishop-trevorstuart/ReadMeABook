@@ -74,6 +74,29 @@ describe('RequestActionsDropdown', () => {
     expect(onDelete).toHaveBeenCalledWith('req-1', 'Pending Book');
   });
 
+  it('uses configured base URL for ebook View Source link', () => {
+    render(
+      <RequestActionsDropdown
+        request={{
+          requestId: 'req-ebook',
+          title: 'Ebook Title',
+          author: 'Author',
+          status: 'downloaded',
+          type: 'ebook',
+          torrentUrl: JSON.stringify(['https://annas-archive.li/slow_download/abc123def456abc123def456abc123de/0/5']),
+        }}
+        onManualSearch={vi.fn().mockResolvedValue(undefined)}
+        onCancel={vi.fn().mockResolvedValue(undefined)}
+        onDelete={vi.fn()}
+        annasArchiveBaseUrl="https://custom-mirror.org"
+      />
+    );
+
+    fireEvent.click(screen.getByTitle('Actions'));
+    const viewSourceLink = screen.getByText('View Source').closest('a');
+    expect(viewSourceLink).toHaveAttribute('href', 'https://custom-mirror.org/md5/abc123def456abc123def456abc123de');
+  });
+
   it('shows view source and ebook fetch when available', async () => {
     const onFetchEbook = vi.fn().mockResolvedValue(undefined);
     const onDelete = vi.fn();

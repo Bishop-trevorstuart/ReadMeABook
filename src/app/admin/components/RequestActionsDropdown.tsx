@@ -19,13 +19,16 @@ export interface RequestActionsDropdownProps {
     author: string;
     status: string;
     type?: 'audiobook' | 'ebook';
+    asin?: string | null;
     torrentUrl?: string | null;
   };
   onDelete: (requestId: string, title: string) => void;
   onManualSearch: (requestId: string) => Promise<void>;
   onCancel: (requestId: string) => Promise<void>;
+  onViewDetails?: (asin: string) => void;
   onFetchEbook?: (requestId: string) => Promise<void>;
   ebookSidecarEnabled?: boolean;
+  annasArchiveBaseUrl?: string;
   isLoading?: boolean;
 }
 
@@ -34,8 +37,10 @@ export function RequestActionsDropdown({
   onDelete,
   onManualSearch,
   onCancel,
+  onViewDetails,
   onFetchEbook,
   ebookSidecarEnabled = false,
+  annasArchiveBaseUrl = 'https://annas-archive.li',
   isLoading = false,
 }: RequestActionsDropdownProps) {
   const [isOpen, setIsOpen] = useState(false);
@@ -45,6 +50,9 @@ export function RequestActionsDropdown({
 
   // Determine request type
   const isEbook = request.type === 'ebook';
+
+  // View Details: available when ASIN exists (audiobook requests only)
+  const canViewDetails = !isEbook && !!request.asin && !!onViewDetails;
 
   // Determine available actions based on status and type
   // Ebooks don't support manual/interactive search (Anna's Archive only)
@@ -64,7 +72,7 @@ export function RequestActionsDropdown({
       if (Array.isArray(urls) && urls.length > 0) {
         const md5Match = urls[0].match(/\/slow_download\/([a-f0-9]{32})\//i);
         if (md5Match) {
-          viewSourceUrl = `https://annas-archive.li/md5/${md5Match[1]}`;
+          viewSourceUrl = `${annasArchiveBaseUrl.replace(/\/+$/, '')}/md5/${md5Match[1]}`;
         }
       }
     } catch {
@@ -147,6 +155,13 @@ export function RequestActionsDropdown({
     }
   };
 
+  const handleViewDetails = () => {
+    setIsOpen(false);
+    if (request.asin && onViewDetails) {
+      onViewDetails(request.asin);
+    }
+  };
+
   // Dropdown menu content (rendered via portal)
   const dropdownMenu = isOpen && style && (
     <div
@@ -155,6 +170,41 @@ export function RequestActionsDropdown({
       className="w-56 rounded-lg shadow-lg bg-white dark:bg-gray-800 ring-1 ring-black ring-opacity-5 z-50 max-h-[calc(100vh-2rem)] overflow-y-auto"
     >
           <div className="py-1" role="menu">
+            {/* View Details */}
+            {canViewDetails && (
+              <button
+                onClick={handleViewDetails}
+                className="w-full text-left px-4 py-2 text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-700 flex items-center gap-2 transition-colors"
+                role="menuitem"
+              >
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth={2}
+                    d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"
+                  />
+                </svg>
+                View Details
+              </button>
+            )}
+
+            {/* Divider after View Details */}
+            {canViewDetails && (canSearch || canViewSource || canFetchEbook || canCancel || canDelete) && (
+              <div className="border-t border-gray-200 dark:border-gray-700 my-1" />
+            )}
+
             {/* Manual Search */}
             {canSearch && (
               <button

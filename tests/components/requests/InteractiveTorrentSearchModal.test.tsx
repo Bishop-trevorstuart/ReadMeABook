@@ -98,9 +98,8 @@ describe('InteractiveTorrentSearchModal', () => {
 
     expect(await screen.findByText('Test Torrent')).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
-    const downloadButtons = screen.getAllByRole('button', { name: 'Download' });
-    fireEvent.click(downloadButtons[downloadButtons.length - 1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Get' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Download' }));
 
     await waitFor(() => {
       expect(selectTorrentMock).toHaveBeenCalledWith('req-123', baseResult);
@@ -129,9 +128,8 @@ describe('InteractiveTorrentSearchModal', () => {
       expect(searchByAudiobookMock).toHaveBeenCalledWith('Test Book', 'Test Author', 'ASIN-1');
     });
 
-    fireEvent.click(screen.getByRole('button', { name: 'Download' }));
-    const downloadButtons = screen.getAllByRole('button', { name: 'Download' });
-    fireEvent.click(downloadButtons[downloadButtons.length - 1]);
+    fireEvent.click(screen.getByRole('button', { name: 'Get' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Download' }));
 
     await waitFor(() => {
       expect(requestWithTorrentMock).toHaveBeenCalledWith(fullAudiobook, baseResult);
@@ -157,9 +155,9 @@ describe('InteractiveTorrentSearchModal', () => {
       expect(searchByRequestMock).toHaveBeenCalledWith('req-456', undefined);
     });
 
-    const input = screen.getByPlaceholderText('Enter book title to search...');
+    const input = screen.getByPlaceholderText('Search title...');
     fireEvent.change(input, { target: { value: 'Custom Title' } });
-    fireEvent.keyPress(input, { key: 'Enter', code: 'Enter', charCode: 13 });
+    fireEvent.keyDown(input, { key: 'Enter', code: 'Enter' });
 
     await waitFor(() => {
       expect(searchByRequestMock).toHaveBeenNthCalledWith(2, 'req-456', 'Custom Title');

@@ -51,7 +51,10 @@ export function useEbookSettings({ ebook, onChange, onSuccess, onError, markAsSa
       const response = await fetchWithAuth('/api/admin/settings/ebook/test-flaresolverr', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: ebook.flaresolverrUrl }),
+        body: JSON.stringify({
+          url: ebook.flaresolverrUrl,
+          baseUrl: ebook.baseUrl || 'https://annas-archive.li',
+        }),
       });
 
       const result = await response.json();

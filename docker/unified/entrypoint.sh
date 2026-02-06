@@ -329,6 +329,7 @@ PORT=$PORT
 HOSTNAME=$HOSTNAME
 PUID=${PUID:-}
 PGID=${PGID:-}
+ROOTLESS_CONTAINER=${ROOTLESS_CONTAINER:-}
 EOF
 
 echo "✅ Environment configured"
@@ -363,7 +364,10 @@ echo "📊 Services starting:"
 echo "   - PostgreSQL (internal, user=postgres)"
 echo "   - Redis (internal, UID:GID=${PUID:-102}:${PGID:-102})"
 echo "   - Next.js App (port 3030, UID:GID=${PUID:-1000}:${PGID:-1000})"
-if [ -n "$PUID" ] && [ -n "$PGID" ]; then
+if [ "${ROOTLESS_CONTAINER}" = "true" ]; then
+    echo ""
+    echo "🔐 ROOTLESS_CONTAINER=true - gosu will be skipped (user namespace handles UID mapping)"
+elif [ -n "$PUID" ] && [ -n "$PGID" ]; then
     echo ""
     echo "🔐 Using gosu for reliable UID:GID switching"
     echo "   App and Redis will run as $PUID:$PGID"

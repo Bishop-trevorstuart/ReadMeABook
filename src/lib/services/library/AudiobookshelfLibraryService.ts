@@ -21,6 +21,9 @@ import {
 } from '../audiobookshelf/api';
 import { ABSLibraryItem } from '../audiobookshelf/types';
 import { getConfigService } from '@/lib/services/config.service';
+import { RMABLogger } from '@/lib/utils/logger';
+
+const logger = RMABLogger.create('AudiobookshelfLibrary');
 
 export class AudiobookshelfLibraryService implements ILibraryService {
   private configService = getConfigService();
@@ -63,17 +66,26 @@ export class AudiobookshelfLibraryService implements ILibraryService {
 
   async getLibraryItems(libraryId: string): Promise<LibraryItem[]> {
     const items = await getABSLibraryItems(libraryId);
-    return items.map(this.mapABSItemToLibraryItem);
+    const audioItems = items.filter(this.hasAudioContent);
+    const skipped = items.length - audioItems.length;
+    if (skipped > 0) {
+      logger.info(`Filtered ${skipped} ebook-only item(s) from library (no audio files)`);
+    }
+    return audioItems.map(this.mapABSItemToLibraryItem);
   }
 
   async getRecentlyAdded(libraryId: string, limit: number): Promise<LibraryItem[]> {
     const items = await getABSRecentItems(libraryId, limit);
-    return items.map(this.mapABSItemToLibraryItem);
+    return items.filter(this.hasAudioContent).map(this.mapABSItemToLibraryItem);
   }
 
   async getItem(itemId: string): Promise<LibraryItem | null> {
     try {
       const item = await getABSItem(itemId);
+      if (!this.hasAudioContent(item)) {
+        logger.debug(`Item ${itemId} is ebook-only (no audio files), skipping`);
+        return null;
+      }
       return this.mapABSItemToLibraryItem(item);
     } catch {
       return null;
@@ -82,7 +94,9 @@ export class AudiobookshelfLibraryService implements ILibraryService {
 
   async searchItems(libraryId: string, query: string): Promise<LibraryItem[]> {
     const items = await searchABSItems(libraryId, query);
-    return items.map((result: any) => this.mapABSItemToLibraryItem(result.libraryItem));
+    return items
+      .filter((result: any) => this.hasAudioContent(result.libraryItem))
+      .map((result: any) => this.mapABSItemToLibraryItem(result.libraryItem));
   }
 
   async triggerLibraryScan(libraryId: string): Promise<void> {
@@ -115,6 +129,37 @@ export class AudiobookshelfLibraryService implements ILibraryService {
       authToken: authToken,
       backendMode: 'audiobookshelf',
     };
+  }
+
+  /**
+   * Check if an ABS library item contains audio content.
+   * ABS stores both audiobooks and ebooks under mediaType 'book'.
+   * Ebook-only items have no audio files and should be excluded from RMAB's audiobook pipeline.
+   *
+   * The list endpoint returns minified media (numAudioFiles, duration) without the full audioFiles array.
+   * The single-item endpoint returns the full audioFiles array.
+   * We check all available signals to handle both response shapes.
+   */
+  private hasAudioContent(item: any): boolean {
+    if (!item?.media) return false;
+
+    // numAudioFiles: present in list/search endpoint responses (minified media)
+    if (typeof item.media.numAudioFiles === 'number') {
+      return item.media.numAudioFiles > 0;
+    }
+
+    // audioFiles array: present in full single-item responses
+    if (Array.isArray(item.media.audioFiles)) {
+      return item.media.audioFiles.length > 0;
+    }
+
+    // duration fallback: ebook-only items have 0 duration
+    if (typeof item.media.duration === 'number') {
+      return item.media.duration > 0;
+    }
+
+    // Cannot determine — assume audio content to avoid false filtering
+    return true;
   }
 
   private mapABSItemToLibraryItem(item: ABSLibraryItem): LibraryItem {

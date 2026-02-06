@@ -63,10 +63,28 @@ describe('E-book sidecar', () => {
       },
     });
 
-    const result = await testFlareSolverrConnection('http://flare');
+    const result = await testFlareSolverrConnection('http://flare', 'https://annas-archive.li');
 
     expect(result.success).toBe(true);
     expect(result.responseTime).toBeTypeOf('number');
+  });
+
+  it('uses configured base URL for FlareSolverr test', async () => {
+    const longHtml = `<html>${'Anna'.padEnd(1200, 'A')}</html>`;
+    axiosMock.post.mockResolvedValue({
+      data: {
+        status: 'ok',
+        solution: { status: 200, response: longHtml },
+      },
+    });
+
+    await testFlareSolverrConnection('http://flare', 'https://custom-mirror.org');
+
+    expect(axiosMock.post).toHaveBeenCalledWith(
+      'http://flare/v1',
+      expect.objectContaining({ url: 'https://custom-mirror.org/' }),
+      expect.any(Object)
+    );
   });
 
   it('returns false when FlareSolverr response is invalid', async () => {
@@ -77,7 +95,7 @@ describe('E-book sidecar', () => {
       },
     });
 
-    const result = await testFlareSolverrConnection('http://flare');
+    const result = await testFlareSolverrConnection('http://flare', 'https://annas-archive.li');
 
     expect(result.success).toBe(false);
   });
@@ -85,7 +103,7 @@ describe('E-book sidecar', () => {
   it('returns error details when FlareSolverr request fails', async () => {
     axiosMock.post.mockRejectedValue(new Error('flare down'));
 
-    const result = await testFlareSolverrConnection('http://flare');
+    const result = await testFlareSolverrConnection('http://flare', 'https://annas-archive.li');
 
     expect(result.success).toBe(false);
     expect(result.message).toContain('flare down');
@@ -99,7 +117,7 @@ describe('E-book sidecar', () => {
       },
     });
 
-    const result = await testFlareSolverrConnection('http://flare');
+    const result = await testFlareSolverrConnection('http://flare', 'https://annas-archive.li');
 
     expect(result.success).toBe(false);
     expect(result.message).toContain('FlareSolverr error');
@@ -114,7 +132,7 @@ describe('E-book sidecar', () => {
       },
     });
 
-    const result = await testFlareSolverrConnection('http://flare');
+    const result = await testFlareSolverrConnection('http://flare', 'https://annas-archive.li');
 
     expect(result.success).toBe(false);
     expect(result.message).toContain('FlareSolverr returned HTTP 403');

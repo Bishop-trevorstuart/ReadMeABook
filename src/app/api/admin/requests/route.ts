@@ -101,6 +101,7 @@ export async function GET(request: NextRequest) {
                 id: true,
                 title: true,
                 author: true,
+                audibleAsin: true,
               },
             },
             user: {
@@ -129,6 +130,7 @@ export async function GET(request: NextRequest) {
           requestId: request.id,
           title: request.audiobook.title,
           author: request.audiobook.author,
+          asin: request.audiobook.audibleAsin || null,
           status: request.status,
           type: request.type || 'audiobook', // Include request type for UI display
           userId: request.user.id,

@@ -331,13 +331,14 @@ describe('Admin settings test routes', () => {
 
   it('tests FlareSolverr connection', async () => {
     testFlareSolverrMock.mockResolvedValueOnce({ success: true });
-    const request = { json: vi.fn().mockResolvedValue({ url: 'http://flare' }) };
+    const request = { json: vi.fn().mockResolvedValue({ url: 'http://flare', baseUrl: 'https://annas-archive.li' }) };
 
     const { POST } = await import('@/app/api/admin/settings/ebook/test-flaresolverr/route');
     const response = await POST(request as any);
     const payload = await response.json();
 
     expect(payload.success).toBe(true);
+    expect(testFlareSolverrMock).toHaveBeenCalledWith('http://flare', 'https://annas-archive.li');
   });
 
   it('rejects FlareSolverr test when URL is missing', async () => {
@@ -364,7 +365,7 @@ describe('Admin settings test routes', () => {
 
   it('returns error when FlareSolverr test throws', async () => {
     testFlareSolverrMock.mockRejectedValueOnce(new Error('flare down'));
-    const request = { json: vi.fn().mockResolvedValue({ url: 'http://flare' }) };
+    const request = { json: vi.fn().mockResolvedValue({ url: 'http://flare', baseUrl: 'https://annas-archive.li' }) };
 
     const { POST } = await import('@/app/api/admin/settings/ebook/test-flaresolverr/route');
     const response = await POST(request as any);

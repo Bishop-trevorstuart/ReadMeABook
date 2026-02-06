@@ -13,11 +13,13 @@ import { RequestActionsDropdown } from './RequestActionsDropdown';
 import { mutate } from 'swr';
 import { authenticatedFetcher, fetchWithAuth } from '@/lib/utils/api';
 import { useToast } from '@/components/ui/Toast';
+import { AudiobookDetailsModal } from '@/components/audiobooks/AudiobookDetailsModal';
 
 interface RecentRequest {
   requestId: string;
   title: string;
   author: string;
+  asin?: string | null;
   status: string;
   type?: 'audiobook' | 'ebook';
   userId: string;
@@ -43,6 +45,7 @@ interface RequestsResponse {
 
 interface RecentRequestsTableProps {
   ebookSidecarEnabled?: boolean;
+  annasArchiveBaseUrl?: string;
 }
 
 const STATUS_OPTIONS = [
@@ -158,7 +161,7 @@ function getInitialParams(): {
   };
 }
 
-export function RecentRequestsTable({ ebookSidecarEnabled = false }: RecentRequestsTableProps) {
+export function RecentRequestsTable({ ebookSidecarEnabled = false, annasArchiveBaseUrl = 'https://annas-archive.li' }: RecentRequestsTableProps) {
   const toast = useToast();
 
   // Get initial filter state from URL (only evaluated once due to lazy init)
@@ -184,6 +187,10 @@ export function RecentRequestsTable({ ebookSidecarEnabled = false }: RecentReque
   } | null>(null);
   const [isDeleting, setIsDeleting] = useState(false);
   const [isFetchingEbook, setIsFetchingEbook] = useState(false);
+
+  // View Details modal state
+  const [viewDetailsAsin, setViewDetailsAsin] = useState<string | null>(null);
+  const [viewDetailsStatus, setViewDetailsStatus] = useState<string | null>(null);
 
   // Build API URL with current local filters
   const apiUrl = `/api/admin/requests?page=${page}&pageSize=${pageSize}&search=${encodeURIComponent(debouncedSearch)}&status=${status}&userId=${userId}&sortBy=${sortBy}&sortOrder=${sortOrder}`;
@@ -314,6 +321,11 @@ export function RecentRequestsTable({ ebookSidecarEnabled = false }: RecentReque
   const hasActiveFilters = debouncedSearch || status !== 'all' || userId;
 
   // Action handlers
+  const handleViewDetails = (asin: string, requestStatus?: string) => {
+    setViewDetailsAsin(asin);
+    setViewDetailsStatus(requestStatus || null);
+  };
+
   const handleDeleteClick = (requestId: string, title: string) => {
     setSelectedRequest({ id: requestId, title });
     setShowDeleteConfirm(true);
@@ -659,13 +671,16 @@ export function RecentRequestsTable({ ebookSidecarEnabled = false }: RecentReque
                           author: request.author,
                           status: request.status,
                           type: request.type,
+                          asin: request.asin,
                           torrentUrl: request.torrentUrl,
                         }}
                         onDelete={handleDeleteClick}
                         onManualSearch={handleManualSearch}
                         onCancel={handleCancel}
+                        onViewDetails={(asin) => handleViewDetails(asin, request.status)}
                         onFetchEbook={handleFetchEbook}
                         ebookSidecarEnabled={ebookSidecarEnabled}
+                        annasArchiveBaseUrl={annasArchiveBaseUrl}
                         isLoading={isDeleting || isFetchingEbook}
                       />
                     </td>
@@ -808,6 +823,21 @@ export function RecentRequestsTable({ ebookSidecarEnabled = false }: RecentReque
         onConfirm={handleDeleteConfirm}
         onCancel={handleDeleteCancel}
       />
+
+      {/* Audiobook Details Modal */}
+      {viewDetailsAsin && (
+        <AudiobookDetailsModal
+          asin={viewDetailsAsin}
+          isOpen={!!viewDetailsAsin}
+          onClose={() => {
+            setViewDetailsAsin(null);
+            setViewDetailsStatus(null);
+          }}
+          isAvailable={viewDetailsStatus === 'available' || viewDetailsStatus === 'completed'}
+          requestStatus={viewDetailsStatus}
+          hideRequestActions
+        />
+      )}
     </div>
   );
 }

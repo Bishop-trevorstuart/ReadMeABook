@@ -485,31 +485,8 @@ function AdminDashboardContent() {
               />
             </div>
 
-            {/* Requests Awaiting Approval */}
-            {pendingApprovalData?.requests && pendingApprovalData.requests.length > 0 && (
-              <PendingApprovalSection requests={pendingApprovalData.requests} />
-            )}
-
-            {/* Active Downloads */}
-            <div className="mb-8">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-                Active Downloads
-              </h2>
-              <ActiveDownloadsTable downloads={downloadsData.downloads} />
-            </div>
-
-            {/* Request Management */}
-            <div className="mb-8">
-              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
-                Request Management
-              </h2>
-              <RecentRequestsTable
-                ebookSidecarEnabled={settingsData?.ebook?.annasArchiveEnabled || settingsData?.ebook?.indexerSearchEnabled || false}
-              />
-            </div>
-
             {/* Quick Actions */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
               <Link
                 href="/admin/settings"
                 className="block p-6 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg hover:shadow-md transition-all"
@@ -595,6 +572,31 @@ function AdminDashboardContent() {
                 </div>
               </Link>
             </div>
+
+            {/* Requests Awaiting Approval */}
+            {pendingApprovalData?.requests && pendingApprovalData.requests.length > 0 && (
+              <PendingApprovalSection requests={pendingApprovalData.requests} />
+            )}
+
+            {/* Active Downloads */}
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+                Active Downloads
+              </h2>
+              <ActiveDownloadsTable downloads={downloadsData.downloads} />
+            </div>
+
+            {/* Request Management */}
+            <div className="mb-8">
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-4">
+                Request Management
+              </h2>
+              <RecentRequestsTable
+                ebookSidecarEnabled={settingsData?.ebook?.annasArchiveEnabled || settingsData?.ebook?.indexerSearchEnabled || false}
+                annasArchiveBaseUrl={settingsData?.ebook?.baseUrl}
+              />
+            </div>
+
           </>
         )}
       </div>

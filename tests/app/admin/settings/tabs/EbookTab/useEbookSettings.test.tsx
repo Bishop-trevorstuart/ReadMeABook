@@ -75,7 +75,7 @@ describe('useEbookSettings', () => {
     expect(result.current.flaresolverrTestResult?.message).toContain('Please enter a FlareSolverr URL');
   });
 
-  it('tests FlareSolverr connection successfully', async () => {
+  it('tests FlareSolverr connection successfully and sends baseUrl', async () => {
     fetchWithAuthMock.mockResolvedValueOnce({
       ok: true,
       json: async () => ({ success: true, message: 'OK' }),
@@ -91,6 +91,10 @@ describe('useEbookSettings', () => {
     });
 
     expect(result.current.flaresolverrTestResult?.success).toBe(true);
+    // Verify baseUrl is included in the request body
+    const callBody = JSON.parse(fetchWithAuthMock.mock.calls[0][1].body);
+    expect(callBody.baseUrl).toBe('https://annas-archive.li');
+    expect(callBody.url).toBe('http://flare');
   });
 
   it('handles FlareSolverr test failures', async () => {
