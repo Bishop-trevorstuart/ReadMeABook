@@ -32,6 +32,7 @@ Configurable Audible region for accurate metadata matching across different inte
 - Australia (`au`) - `audible.com.au` (English)
 - India (`in`) - `audible.in` (English)
 - Germany (`de`) - `audible.de` (non-English)
+- Spain (`es`) - `audible.es` (non-English)
 
 **`isEnglish` Flag:**
 - Each region has `isEnglish: boolean` in `AudibleRegionConfig`

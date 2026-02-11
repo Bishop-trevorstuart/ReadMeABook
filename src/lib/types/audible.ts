@@ -3,7 +3,7 @@
  * Documentation: documentation/integrations/audible.md
  */
 
-export type AudibleRegion = 'us' | 'ca' | 'uk' | 'au' | 'in' | 'de';
+export type AudibleRegion = 'us' | 'ca' | 'uk' | 'au' | 'in' | 'de' | 'es';
 
 export interface AudibleRegionConfig {
   code: AudibleRegion;
@@ -56,6 +56,13 @@ export const AUDIBLE_REGIONS: Record<AudibleRegion, AudibleRegionConfig> = {
     audnexusParam: 'de',
     isEnglish: false,
   },
+  es: {
+    code: 'es',
+    name: 'Spain',
+    baseUrl: 'https://www.audible.es',
+    audnexusParam: 'es',
+    isEnglish: false,
+  }
 };
 
 export const DEFAULT_AUDIBLE_REGION: AudibleRegion = 'us';
