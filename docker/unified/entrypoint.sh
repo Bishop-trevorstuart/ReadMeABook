@@ -157,16 +157,41 @@ export PLEX_PRODUCT_NAME="${PLEX_PRODUCT_NAME:-ReadMeABook}"
 export LOG_LEVEL="${LOG_LEVEL:-info}"
 
 # ============================================================================
-# INITIALIZE POSTGRESQL
+# DETECT EXTERNAL SERVICES
 # ============================================================================
-PGDATA="/var/lib/postgresql/data"
-PG_WAS_EMPTY=0
+# Check if user provided external DATABASE_URL or REDIS_URL
+USE_EXTERNAL_POSTGRES=false
+USE_EXTERNAL_REDIS=false
 
-# Ensure correct ownership of data directories (critical for bind mounts)
-echo "🔧 Setting up directory permissions..."
+if [ -n "$DATABASE_URL" ]; then
+    DB_HOST=$(echo "$DATABASE_URL" | sed -n 's|.*@\([^:/]*\).*|\1|p')
+    if [ "$DB_HOST" != "127.0.0.1" ] && [ "$DB_HOST" != "localhost" ]; then
+        USE_EXTERNAL_POSTGRES=true
+        echo "ℹ️  External PostgreSQL detected at $DB_HOST"
+    fi
+fi
 
-# PostgreSQL directories - owned by postgres user, group accessible
-if ! chown -R postgres:postgres "$PGDATA" /var/run/postgresql 2>/dev/null; then
+if [ -n "$REDIS_URL" ]; then
+    REDIS_HOST=$(echo "$REDIS_URL" | sed -n 's|redis://\([^:@]*@\)\?\([^:/]*\).*|\2|p')
+    if [ "$REDIS_HOST" != "127.0.0.1" ] && [ "$REDIS_HOST" != "localhost" ]; then
+        USE_EXTERNAL_REDIS=true
+        echo "ℹ️  External Redis detected at $REDIS_HOST"
+    fi
+fi
+
+# ============================================================================
+# INITIALIZE POSTGRESQL (only if using internal PostgreSQL)
+# ============================================================================
+if [ "$USE_EXTERNAL_POSTGRES" = "false" ]; then
+    echo "📦 Configuring internal PostgreSQL..."
+    PGDATA="/var/lib/postgresql/data"
+    PG_WAS_EMPTY=0
+
+    # Ensure correct ownership of data directories (critical for bind mounts)
+    echo "🔧 Setting up directory permissions..."
+
+    # PostgreSQL directories - owned by postgres user, group accessible
+    if ! chown -R postgres:postgres "$PGDATA" /var/run/postgresql 2>/dev/null; then
     echo ""
     echo "❌ ERROR: Failed to set ownership on PostgreSQL directories"
     echo ""
@@ -194,30 +219,37 @@ if ! chown -R postgres:postgres "$PGDATA" /var/run/postgresql 2>/dev/null; then
     echo "   3. Pre-create directories with correct ownership:"
     echo "      mkdir -p pgdata redis config cache"
     echo "      # Let Docker create them on first run"
-    echo ""
-    exit 1
-fi
+        echo ""
+        exit 1
+    fi
 
-if [ -n "$PGID" ]; then
-    # With PUID/PGID: Use 750 (owner rwx, group rx) for PostgreSQL data
-    # This allows the PGID group to read PostgreSQL files if needed
-    chmod 750 "$PGDATA"
-    chmod 775 /var/run/postgresql
+    if [ -n "$PGID" ]; then
+        # With PUID/PGID: Use 750 (owner rwx, group rx) for PostgreSQL data
+        # This allows the PGID group to read PostgreSQL files if needed
+        chmod 750 "$PGDATA"
+        chmod 775 /var/run/postgresql
+    else
+        # Without PUID/PGID: Use strict 700 permissions (owner only)
+        chmod 700 "$PGDATA"
+        chmod 775 /var/run/postgresql
+    fi
 else
-    # Without PUID/PGID: Use strict 700 permissions (owner only)
-    chmod 700 "$PGDATA"
-    chmod 775 /var/run/postgresql
+    echo "⏭️  Skipping internal PostgreSQL setup (using external database)"
 fi
 
 # Redis directory - owned by redis user (remapped to PUID:PGID if set)
-if ! chown -R redis:redis /var/lib/redis 2>/dev/null; then
-    echo ""
-    echo "❌ ERROR: Failed to set ownership on Redis directory"
-    echo "   See solutions above for PostgreSQL directories"
-    echo ""
-    exit 1
+if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
+    if ! chown -R redis:redis /var/lib/redis 2>/dev/null; then
+        echo ""
+        echo "❌ ERROR: Failed to set ownership on Redis directory"
+        echo "   See solutions above for PostgreSQL directories"
+        echo ""
+        exit 1
+    fi
+    chmod 770 /var/lib/redis
+else
+    echo "⏭️  Skipping internal Redis setup (using external Redis)"
 fi
-chmod 770 /var/lib/redis
 
 # App directories - owned by node user (remapped to PUID:PGID if set)
 # These need group write permissions for shared access
@@ -232,18 +264,20 @@ chmod 775 /app/config /app/cache
 
 echo "✅ Directory permissions configured"
 
-if [ ! -f "$PGDATA/PG_VERSION" ]; then
-    PG_WAS_EMPTY=1
-    echo "📦 Initializing PostgreSQL database..."
-    su - postgres -c "/usr/lib/postgresql/16/bin/initdb -D $PGDATA"
+if [ "$USE_EXTERNAL_POSTGRES" = "false" ]; then
+    # Only initialize/setup PostgreSQL if using internal instance
+    if [ ! -f "$PGDATA/PG_VERSION" ]; then
+        PG_WAS_EMPTY=1
+        echo "📦 Initializing PostgreSQL database..."
+        su - postgres -c "/usr/lib/postgresql/16/bin/initdb -D $PGDATA"
 
-    # Configure PostgreSQL for local access
-    echo "host all all 127.0.0.1/32 trust" >> "$PGDATA/pg_hba.conf"
-    echo "host all all ::1/128 trust" >> "$PGDATA/pg_hba.conf"
-    echo "local all all trust" >> "$PGDATA/pg_hba.conf"
+        # Configure PostgreSQL for local access
+        echo "host all all 127.0.0.1/32 trust" >> "$PGDATA/pg_hba.conf"
+        echo "host all all ::1/128 trust" >> "$PGDATA/pg_hba.conf"
+        echo "local all all trust" >> "$PGDATA/pg_hba.conf"
 
-    # Update postgresql.conf for performance
-    cat >> "$PGDATA/postgresql.conf" <<EOF
+        # Update postgresql.conf for performance
+        cat >> "$PGDATA/postgresql.conf" <<EOF
 listen_addresses = '127.0.0.1'
 max_connections = 100
 shared_buffers = 128MB
@@ -254,31 +288,31 @@ log_destination = 'stderr'
 logging_collector = off
 EOF
 
-    echo "✅ PostgreSQL initialized"
-else
-    echo "✅ PostgreSQL data directory already exists"
-fi
-
-# ============================================================================
-# START POSTGRESQL TEMPORARILY TO CREATE USER/DATABASE
-# ============================================================================
-echo "🔧 Starting PostgreSQL for setup..."
-su - postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D $PGDATA -w start -o '-c listen_addresses=127.0.0.1'"
-
-# Wait for PostgreSQL to be ready
-for i in {1..30}; do
-    if su - postgres -c "/usr/lib/postgresql/16/bin/pg_isready -h 127.0.0.1 -p 5432" > /dev/null 2>&1; then
-        echo "✅ PostgreSQL is ready"
-        break
+        echo "✅ PostgreSQL initialized"
+    else
+        echo "✅ PostgreSQL data directory already exists"
     fi
-    echo "⏳ Waiting for PostgreSQL to be ready... ($i/30)"
-    sleep 1
-done
 
-# Always ensure user and database exist (safe due to IF NOT EXISTS checks)
-# This handles cases where data directory exists but user/database don't
-echo "👤 Ensuring database user and database exist..."
-su - postgres -c "psql -h 127.0.0.1 -U postgres" <<EOF
+    # ========================================================================
+    # START POSTGRESQL TEMPORARILY TO CREATE USER/DATABASE
+    # ========================================================================
+    echo "🔧 Starting PostgreSQL for setup..."
+    su - postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D $PGDATA -w start -o '-c listen_addresses=127.0.0.1'"
+
+    # Wait for PostgreSQL to be ready
+    for i in {1..30}; do
+        if su - postgres -c "/usr/lib/postgresql/16/bin/pg_isready -h 127.0.0.1 -p 5432" > /dev/null 2>&1; then
+            echo "✅ PostgreSQL is ready"
+            break
+        fi
+        echo "⏳ Waiting for PostgreSQL to be ready... ($i/30)"
+        sleep 1
+    done
+
+    # Always ensure user and database exist (safe due to IF NOT EXISTS checks)
+    # This handles cases where data directory exists but user/database don't
+    echo "👤 Ensuring database user and database exist..."
+    su - postgres -c "psql -h 127.0.0.1 -U postgres" <<EOF
 DO \$\$
 BEGIN
     IF NOT EXISTS (SELECT FROM pg_user WHERE usename = '$POSTGRES_USER') THEN
@@ -296,19 +330,39 @@ GRANT ALL PRIVILEGES ON DATABASE $POSTGRES_DB TO $POSTGRES_USER;
 ALTER DATABASE $POSTGRES_DB OWNER TO $POSTGRES_USER;
 EOF
 
-if [ "$PG_WAS_EMPTY" -eq 1 ]; then
-    echo "✅ Database initialized and setup complete"
-else
-    echo "✅ Database user and permissions verified"
+    if [ "$PG_WAS_EMPTY" -eq 1 ]; then
+        echo "✅ Database initialized and setup complete"
+    else
+        echo "✅ Database user and permissions verified"
+    fi
+
+    # Stop PostgreSQL (supervisord will start it via wrapper)
+    echo "🔧 Stopping temporary PostgreSQL instance..."
+    su - postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D $PGDATA stop -m fast"
 fi
 
 # ============================================================================
 # SET ENVIRONMENT VARIABLES FOR APP
 # ============================================================================
-# URL-encode the password to handle special characters
-ENCODED_PASSWORD=$(urlencode "$POSTGRES_PASSWORD")
-export DATABASE_URL="postgresql://$POSTGRES_USER:$ENCODED_PASSWORD@127.0.0.1:5432/$POSTGRES_DB"
-export REDIS_URL="redis://127.0.0.1:6379"
+# Set DATABASE_URL and REDIS_URL based on whether we're using internal or external services
+if [ "$USE_EXTERNAL_POSTGRES" = "false" ]; then
+    # URL-encode the password to handle special characters
+    ENCODED_PASSWORD=$(urlencode "$POSTGRES_PASSWORD")
+    export DATABASE_URL="postgresql://$POSTGRES_USER:$ENCODED_PASSWORD@127.0.0.1:5432/$POSTGRES_DB"
+    echo "✅ Using internal PostgreSQL (127.0.0.1:5432)"
+else
+    # DATABASE_URL already set by user - do not modify
+    echo "✅ Using external DATABASE_URL: ${DATABASE_URL%%@*}@***"
+fi
+
+if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
+    export REDIS_URL="redis://127.0.0.1:6379"
+    echo "✅ Using internal Redis (127.0.0.1:6379)"
+else
+    # REDIS_URL already set by user - do not modify
+    echo "✅ Using external REDIS_URL: ${REDIS_URL}"
+fi
+
 export NODE_ENV="production"
 export PORT="3030"
 export HOSTNAME="0.0.0.0"
@@ -335,15 +389,11 @@ EOF
 echo "✅ Environment configured"
 
 # ============================================================================
-# RUN PRISMA MIGRATIONS (while PostgreSQL is still running)
+# RUN PRISMA MIGRATIONS
 # ============================================================================
 echo "🔄 Running Prisma migrations..."
 cd /app
 su - node -c "cd /app && DATABASE_URL='$DATABASE_URL' npx prisma db push --skip-generate --accept-data-loss" || echo "⚠️  Migrations may have failed, continuing..."
-
-# Stop PostgreSQL (supervisord will start it)
-echo "🔧 Stopping temporary PostgreSQL instance..."
-su - postgres -c "/usr/lib/postgresql/16/bin/pg_ctl -D $PGDATA stop -m fast"
 
 # ============================================================================
 # DISPLAY STARTUP INFO
@@ -361,8 +411,16 @@ if [ "$POSTGRES_PASSWORD" = "$(generate_secret)" ]; then
 fi
 echo ""
 echo "📊 Services starting:"
-echo "   - PostgreSQL (internal, user=postgres)"
-echo "   - Redis (internal, UID:GID=${PUID:-102}:${PGID:-102})"
+if [ "$USE_EXTERNAL_POSTGRES" = "false" ]; then
+    echo "   - PostgreSQL (internal, 127.0.0.1:5432)"
+else
+    echo "   - PostgreSQL (external - local instance disabled)"
+fi
+if [ "$USE_EXTERNAL_REDIS" = "false" ]; then
+    echo "   - Redis (internal, 127.0.0.1:6379, UID:GID=${PUID:-102}:${PGID:-102})"
+else
+    echo "   - Redis (external - local instance disabled)"
+fi
 echo "   - Next.js App (port 3030, UID:GID=${PUID:-1000}:${PGID:-1000})"
 if [ "${ROOTLESS_CONTAINER}" = "true" ]; then
     echo ""

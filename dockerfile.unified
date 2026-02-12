@@ -115,6 +115,11 @@ COPY --chown=root:root docker/unified/redis-start.sh /app/redis-start.sh
 # Convert line endings and make executable
 RUN sed -i 's/\r$//' /app/redis-start.sh && chmod +x /app/redis-start.sh
 
+# Copy postgres startup wrapper
+COPY --chown=root:root docker/unified/postgres-start.sh /app/postgres-start.sh
+# Convert line endings and make executable
+RUN sed -i 's/\r$//' /app/postgres-start.sh && chmod +x /app/postgres-start.sh
+
 # Expose app port
 EXPOSE 3030
 

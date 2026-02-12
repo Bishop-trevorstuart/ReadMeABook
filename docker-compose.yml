@@ -54,6 +54,24 @@ services:
       # POSTGRES_PASSWORD: "your-custom-postgres-password-here"
 
       # ========================================================================
+      # OPTIONAL: External PostgreSQL and Redis
+      # ========================================================================
+      # To use external PostgreSQL or Redis instances instead of the internal ones,
+      # uncomment and configure the appropriate URL(s):
+      #
+      # External PostgreSQL example:
+      # DATABASE_URL: "postgresql://username:password@postgres.example.com:5432/readmeabook"
+      #
+      # External Redis example:
+      # REDIS_URL: "redis://redis.example.com:6379"
+      # REDIS_URL: "redis://:password@redis.example.com:6379"  # With password
+      #
+      # Note: When using external services:
+      # - The internal PostgreSQL/Redis will NOT start (smart detection)
+      # - You do NOT need to mount ./pgdata or ./redis volumes
+      # - Ensure your external services are accessible from the container
+
+      # ========================================================================
       # OPTIONAL: Rootless Podman Support
       # ========================================================================
       # Set to "true" ONLY if running with rootless Podman.
