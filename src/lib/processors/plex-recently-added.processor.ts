@@ -325,7 +325,9 @@ export async function processPlexRecentlyAddedCheck(payload: PlexRecentlyAddedPa
               request.id,
               audiobook.title,
               audiobook.author,
-              request.user.plexUsername || 'Unknown User'
+              request.user.plexUsername || 'Unknown User',
+              undefined,
+              'audiobook'
             ).catch((error) => {
               logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
             });

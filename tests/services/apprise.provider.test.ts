@@ -172,6 +172,7 @@ describe('AppriseProvider', () => {
           title: 'Test Book',
           author: 'Test Author',
           userName: 'Test User',
+          requestType: 'audiobook',
           timestamp: new Date(),
         }
       );

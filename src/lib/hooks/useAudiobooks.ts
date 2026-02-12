@@ -12,6 +12,7 @@ export interface Audiobook {
   asin: string;
   title: string;
   author: string;
+  authorAsin?: string;
   narrator?: string;
   description?: string;
   coverArtUrl?: string;
@@ -81,6 +82,7 @@ export function useAudiobookDetails(asin: string | null) {
 
   return {
     audiobook: data?.audiobook || null,
+    audibleBaseUrl: data?.audibleBaseUrl || 'https://www.audible.com',
     isLoading,
     error,
   };

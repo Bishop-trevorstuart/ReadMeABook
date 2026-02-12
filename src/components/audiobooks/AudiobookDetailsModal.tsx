@@ -10,6 +10,7 @@
 
 import React, { useEffect, useState } from 'react';
 import Image from 'next/image';
+import Link from 'next/link';
 import { createPortal } from 'react-dom';
 import { useAudiobookDetails } from '@/lib/hooks/useAudiobooks';
 import { useCreateRequest, useEbookStatus, useFetchEbookByAsin } from '@/lib/hooks/useRequests';
@@ -71,7 +72,7 @@ export function AudiobookDetailsModal({
 }: AudiobookDetailsModalProps) {
   const { user } = useAuth();
   const { squareCovers } = usePreferences();
-  const { audiobook, isLoading, error } = useAudiobookDetails(isOpen ? asin : null);
+  const { audiobook, audibleBaseUrl, isLoading, error } = useAudiobookDetails(isOpen ? asin : null);
   const { createRequest, isLoading: isRequesting } = useCreateRequest();
   const { ebookStatus, revalidate: revalidateEbookStatus } = useEbookStatus(isOpen && isAvailable ? asin : null);
   const { fetchEbook, isLoading: isFetchingEbook } = useFetchEbookByAsin();
@@ -286,7 +287,20 @@ export function AudiobookDetailsModal({
                     {audiobook.title}
                   </h2>
                   <p className="mt-2 text-base sm:text-lg text-gray-600 dark:text-gray-300">
-                    {audiobook.author}
+                    {audiobook.authorAsin ? (
+                      <Link
+                        href={`/authors/${audiobook.authorAsin}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onClose();
+                        }}
+                        className="hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors"
+                      >
+                        {audiobook.author}
+                      </Link>
+                    ) : (
+                      audiobook.author
+                    )}
                   </p>
                   {audiobook.narrator && (
                     <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
@@ -418,7 +432,7 @@ export function AudiobookDetailsModal({
                   <div>
                     <p className="text-gray-500 dark:text-gray-400">Source</p>
                     <a
-                      href={`https://www.audible.com/pd/${asin}`}
+                      href={`${audibleBaseUrl}/pd/${asin}`}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="inline-flex items-center gap-1 text-orange-600 dark:text-orange-400 hover:underline"

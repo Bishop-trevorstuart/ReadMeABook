@@ -622,7 +622,9 @@ async function processEbookOrganization(
     requestId,
     book.title,
     book.author,
-    request.user.plexUsername || 'Unknown User'
+    request.user.plexUsername || 'Unknown User',
+    undefined,
+    'ebook'
   ).catch((error) => {
     logger.error('Failed to queue notification', { error: error instanceof Error ? error.message : String(error) });
   });

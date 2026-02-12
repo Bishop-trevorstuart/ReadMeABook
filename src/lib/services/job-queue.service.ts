@@ -155,6 +155,7 @@ export interface SendNotificationPayload extends JobPayload {
   author: string;
   userName: string;
   message?: string;
+  requestType?: string; // 'audiobook' | 'ebook' — drives type-specific notification titles
   timestamp: Date;
 }
 
@@ -948,7 +949,8 @@ export class JobQueueService {
     title: string,
     author: string,
     userName: string,
-    message?: string
+    message?: string,
+    requestType?: string
   ): Promise<string> {
     logger.info(`Queueing notification: ${event}`, { requestId, title, userName });
     return await this.addJob(
@@ -963,6 +965,7 @@ export class JobQueueService {
         author,
         userName,
         message,
+        requestType,
         // Pass the original ID for notification display (e.g., Discord footer)
         ...(event === 'issue_reported' && { issueId: requestId }),
         timestamp: new Date(),

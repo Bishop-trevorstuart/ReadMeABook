@@ -4,7 +4,7 @@
  */
 
 import { INotificationProvider, NotificationPayload, ProviderMetadata } from '../INotificationProvider';
-import { getEventMeta, type NotificationSeverity } from '@/lib/constants/notification-events';
+import { getEventMeta, getEventTitle, type NotificationSeverity } from '@/lib/constants/notification-events';
 
 export interface DiscordConfig {
   webhookUrl: string;
@@ -59,8 +59,9 @@ export class DiscordProvider implements INotificationProvider {
   }
 
   private formatEmbed(payload: NotificationPayload): any {
-    const { event, title, author, userName, message, requestId, timestamp } = payload;
+    const { event, title, author, userName, message, requestId, requestType, timestamp } = payload;
     const meta = getEventMeta(event);
+    const resolvedTitle = getEventTitle(event, requestType);
 
     const isIssue = event === 'issue_reported';
     const fields = [
@@ -74,7 +75,7 @@ export class DiscordProvider implements INotificationProvider {
     }
 
     return {
-      title: `${meta.emoji} ${meta.title}`,
+      title: `${meta.emoji} ${resolvedTitle}`,
       color: SEVERITY_COLORS[meta.severity],
       fields,
       footer: {

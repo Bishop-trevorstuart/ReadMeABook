@@ -31,6 +31,32 @@ vi.mock('@/lib/services/encryption.service', () => ({
   getEncryptionService: () => encryptionMock,
 }));
 
+describe('getEventTitle', () => {
+  it('returns type-specific title when requestType matches titleByRequestType', async () => {
+    const { getEventTitle } = await import('@/lib/constants/notification-events');
+    expect(getEventTitle('request_available', 'audiobook')).toBe('Audiobook Available');
+    expect(getEventTitle('request_available', 'ebook')).toBe('Ebook Available');
+  });
+
+  it('returns default title when requestType is not provided', async () => {
+    const { getEventTitle } = await import('@/lib/constants/notification-events');
+    expect(getEventTitle('request_available')).toBe('Request Available');
+    expect(getEventTitle('request_available', undefined)).toBe('Request Available');
+  });
+
+  it('returns default title when requestType does not match any entry', async () => {
+    const { getEventTitle } = await import('@/lib/constants/notification-events');
+    expect(getEventTitle('request_available', 'podcast')).toBe('Request Available');
+  });
+
+  it('returns default title for events without titleByRequestType', async () => {
+    const { getEventTitle } = await import('@/lib/constants/notification-events');
+    expect(getEventTitle('request_approved', 'audiobook')).toBe('Request Approved');
+    expect(getEventTitle('request_error')).toBe('Request Error');
+    expect(getEventTitle('request_pending_approval')).toBe('New Request Pending Approval');
+  });
+});
+
 describe('NotificationService', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -273,6 +299,68 @@ describe('NotificationService', () => {
       expect(body.embeds).toHaveLength(1);
       expect(body.embeds[0].title).toBe('✅ Request Approved');
       expect(body.embeds[0].color).toBe(2278750); // Green for approved (0x22C55E)
+    });
+
+    it('uses type-specific title for request_available with requestType', async () => {
+      fetchMock.mockResolvedValue({
+        ok: true,
+        json: async () => ({ success: true }),
+      });
+
+      const { DiscordProvider } = await import('@/lib/services/notification');
+      const provider = new DiscordProvider();
+
+      // Test audiobook
+      await provider.send(
+        { webhookUrl: 'https://discord.com/webhook' },
+        {
+          event: 'request_available',
+          requestId: 'req-1',
+          title: 'Test Book',
+          author: 'Test Author',
+          userName: 'Test User',
+          requestType: 'audiobook',
+          timestamp: new Date('2024-01-01T00:00:00Z'),
+        }
+      );
+
+      let body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.embeds[0].title).toBe('\u{1F389} Audiobook Available');
+
+      // Test ebook
+      fetchMock.mockClear();
+      await provider.send(
+        { webhookUrl: 'https://discord.com/webhook' },
+        {
+          event: 'request_available',
+          requestId: 'req-2',
+          title: 'Test Book 2',
+          author: 'Test Author 2',
+          userName: 'Test User',
+          requestType: 'ebook',
+          timestamp: new Date('2024-01-01T00:00:00Z'),
+        }
+      );
+
+      body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.embeds[0].title).toBe('\u{1F389} Ebook Available');
+
+      // Test fallback (no requestType)
+      fetchMock.mockClear();
+      await provider.send(
+        { webhookUrl: 'https://discord.com/webhook' },
+        {
+          event: 'request_available',
+          requestId: 'req-3',
+          title: 'Test Book 3',
+          author: 'Test Author 3',
+          userName: 'Test User',
+          timestamp: new Date('2024-01-01T00:00:00Z'),
+        }
+      );
+
+      body = JSON.parse(fetchMock.mock.calls[0][1].body);
+      expect(body.embeds[0].title).toBe('\u{1F389} Request Available');
     });
 
     it('uses default username if not provided', async () => {

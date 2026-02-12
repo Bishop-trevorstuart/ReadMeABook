@@ -18,6 +18,7 @@ export interface NotificationPayload {
   author: string;
   userName: string;
   message?: string; // For error/issue events
+  requestType?: string; // 'audiobook' | 'ebook' — drives type-specific titles via getEventTitle()
   timestamp: Date;
 }
 

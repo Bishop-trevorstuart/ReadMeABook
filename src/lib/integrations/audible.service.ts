@@ -30,6 +30,7 @@ export interface AudibleAudiobook {
   asin: string;
   title: string;
   author: string;
+  authorAsin?: string;
   narrator?: string;
   description?: string;
   coverArtUrl?: string;
@@ -59,6 +60,13 @@ export class AudibleService {
 
   constructor() {
     // Client will be created lazily on first use
+  }
+
+  /**
+   * Get the current Audible base URL for the configured region
+   */
+  public getBaseUrl(): string {
+    return this.baseUrl;
   }
 
   /**
@@ -269,6 +277,10 @@ export class AudibleService {
           const authorText = $el.find('.authorLabel').text().trim() ||
                              $el.find('.bc-size-small .bc-text-bold').first().text().trim();
 
+          // Extract author ASIN from author link if available
+          const authorHref = $el.find('a[href*="/author/"]').first().attr('href') || '';
+          const authorAsinMatch = authorHref.match(/\/author\/[^\/]+\/([A-Z0-9]{10})/);
+
           const narratorText = $el.find('.narratorLabel').text().trim() ||
                                $el.find('.bc-size-small .bc-text-bold').eq(1).text().trim();
 
@@ -281,6 +293,7 @@ export class AudibleService {
             asin,
             title,
             author: authorText.replace('By:', '').replace('Written by:', '').trim(),
+            authorAsin: authorAsinMatch?.[1] || undefined,
             narrator: narratorText.replace('Narrated by:', '').trim(),
             coverArtUrl: coverArtUrl.replace(/\._.*_\./, '._SL500_.'),
             rating,
@@ -367,6 +380,10 @@ export class AudibleService {
           const authorText = $el.find('.authorLabel').text().trim() ||
                              $el.find('.bc-size-small .bc-text-bold').first().text().trim();
 
+          // Extract author ASIN from author link if available
+          const authorHref = $el.find('a[href*="/author/"]').first().attr('href') || '';
+          const authorAsinMatch = authorHref.match(/\/author\/[^\/]+\/([A-Z0-9]{10})/);
+
           const narratorText = $el.find('.narratorLabel').text().trim();
 
           const coverArtUrl = $el.find('img').attr('src') || '';
@@ -378,6 +395,7 @@ export class AudibleService {
             asin,
             title,
             author: authorText.replace('By:', '').replace('Written by:', '').trim(),
+            authorAsin: authorAsinMatch?.[1] || undefined,
             narrator: narratorText.replace('Narrated by:', '').trim(),
             coverArtUrl: coverArtUrl.replace(/\._.*_\./, '._SL500_.'),
             rating,
@@ -454,9 +472,14 @@ export class AudibleService {
                       $el.find('.bc-heading a').text().trim();
 
         // Extract author from author link
-        const authorText = $el.find('a[href*="/author/"]').first().text().trim() ||
+        const authorLink = $el.find('a[href*="/author/"]').first();
+        const authorText = authorLink.text().trim() ||
                            $el.find('.authorLabel').text().trim() ||
                            $el.find('.bc-size-small .bc-text-bold').first().text().trim();
+
+        // Extract author ASIN from author link href
+        const authorHref = authorLink.attr('href') || '';
+        const authorAsinMatch = authorHref.match(/\/author\/[^\/]+\/([A-Z0-9]{10})/);
 
         // Extract narrator from narrator search link
         const narratorText = $el.find('a[href*="searchNarrator="]').first().text().trim() ||
@@ -478,6 +501,7 @@ export class AudibleService {
           asin,
           title,
           author: authorText.replace('By:', '').replace('Written by:', '').trim(),
+          authorAsin: authorAsinMatch?.[1] || undefined,
           narrator: narratorText.replace('Narrated by:', '').trim(),
           coverArtUrl: coverArtUrl.replace(/\._.*_\./, '._SL500_.'),
           durationMinutes,
@@ -507,6 +531,129 @@ export class AudibleService {
         page,
         hasMore: false,
       };
+    }
+  }
+
+  /**
+   * Search for all books by a specific author, validated by ASIN.
+   * Uses Audible's searchAuthor parameter and paginates through all results.
+   * Filters: (1) author link must contain the target ASIN, (2) language must be English.
+   */
+  async searchByAuthorAsin(authorName: string, authorAsin: string): Promise<AudibleAudiobook[]> {
+    await this.initialize();
+
+    const MAX_PAGES = 10;
+    const allBooks: AudibleAudiobook[] = [];
+    const seenAsins = new Set<string>();
+
+    try {
+      logger.info(`Searching books by author "${authorName}" (ASIN: ${authorAsin})...`);
+
+      for (let page = 1; page <= MAX_PAGES; page++) {
+        const { data: response, meta } = await this.fetchWithRetry('/search', {
+          params: {
+            ipRedirectOverride: 'true',
+            searchAuthor: authorName,
+            pageSize: AUDIBLE_PAGE_SIZE,
+            page,
+          },
+        });
+
+        const $ = cheerio.load(response.data);
+        let pageResults = 0;
+
+        $('.s-result-item, .productListItem').each((_index, element) => {
+          const $el = $(element);
+
+          // --- Language filter: require explicit "English" ---
+          const langText = $el.find('span:contains("Language:")').text().trim() ||
+                           $el.find('.languageLabel').text().trim();
+          // Extract language value (e.g. "Language: English" → "English")
+          const langMatch = langText.match(/Language:\s*(.+)/i);
+          const language = langMatch?.[1]?.trim();
+          if (!language || language.toLowerCase() !== 'english') return;
+
+          // --- Author ASIN filter: verify target ASIN in author links ---
+          const authorLinks = $el.find('a[href*="/author/"]');
+          let hasMatchingAuthor = false;
+          authorLinks.each((_i, link) => {
+            const href = $(link).attr('href') || '';
+            const asinMatch = href.match(/\/author\/[^\/]+\/([A-Z0-9]{10})/);
+            if (asinMatch && asinMatch[1] === authorAsin) {
+              hasMatchingAuthor = true;
+              return false; // break .each()
+            }
+          });
+          if (!hasMatchingAuthor) return;
+
+          // --- Extract book ASIN ---
+          const bookAsin = $el.find('li').attr('data-asin') ||
+                           $el.find('a[href*="/pd/"]').attr('href')?.match(/\/pd\/[^\/]+\/([A-Z0-9]{10})/)?.[1] ||
+                           $el.find('a[href*="/ac/"]').attr('href')?.match(/\/ac\/[^\/]+\/([A-Z0-9]{10})/)?.[1] ||
+                           $el.find('a').attr('href')?.match(/\/(?:pd|ac)\/[^\/]+\/([A-Z0-9]{10})/)?.[1] || '';
+          if (!bookAsin || seenAsins.has(bookAsin)) return;
+          seenAsins.add(bookAsin);
+
+          // --- Parse book details ---
+          const title = $el.find('h2').first().text().trim() ||
+                        $el.find('h3 a').text().trim() ||
+                        $el.find('.bc-heading a').text().trim();
+
+          const authorText = $el.find('a[href*="/author/"]').first().text().trim() ||
+                             $el.find('.authorLabel').text().trim() ||
+                             $el.find('.bc-size-small .bc-text-bold').first().text().trim();
+
+          const narratorText = $el.find('a[href*="searchNarrator="]').first().text().trim() ||
+                               $el.find('.narratorLabel').text().trim();
+
+          const coverArtUrl = $el.find('img').attr('src') || '';
+
+          const runtimeText = $el.find('.runtimeLabel').text().trim() ||
+                              $el.find('span:contains("Length:")').text().trim();
+          const durationMinutes = this.parseRuntime(runtimeText);
+
+          const ratingText = $el.find('.ratingsLabel').text().trim() ||
+                             $el.find('.a-icon-star span').first().text().trim();
+          const rating = ratingText ? parseFloat(ratingText.split(' ')[0]) : undefined;
+
+          allBooks.push({
+            asin: bookAsin,
+            title,
+            author: authorText.replace('By:', '').replace('Written by:', '').trim(),
+            authorAsin,
+            narrator: narratorText.replace('Narrated by:', '').trim(),
+            coverArtUrl: coverArtUrl.replace(/\._.*_\./, '._SL500_.'),
+            durationMinutes,
+            rating,
+          });
+
+          pageResults++;
+        });
+
+        // Check if there are more pages
+        const resultsText = $('.resultsInfo').text().trim();
+        const totalResults = parseInt(resultsText.match(/of ([\d,]+)/)?.[1]?.replace(/,/g, '') || '0');
+        const hasMore = totalResults > page * AUDIBLE_PAGE_SIZE;
+
+        logger.info(`Author books page ${page}: ${pageResults} valid results (${allBooks.length} total, ${totalResults} Audible total)`);
+
+        if (!hasMore || pageResults === 0) break;
+
+        // Pace between pages
+        if (page < MAX_PAGES) {
+          await this.delay(this.pacer.reportPageResult(meta));
+        }
+      }
+
+      logger.info(`Author books search complete: "${authorName}" → ${allBooks.length} books`);
+      return allBooks;
+    } catch (error) {
+      logger.error(`Author books search failed for "${authorName}"`, {
+        error: error instanceof Error ? error.message : String(error),
+        collectedSoFar: allBooks.length,
+      });
+      // Return what we collected before the error
+      return allBooks;
     }
   }
 
@@ -563,6 +710,7 @@ export class AudibleService {
         asin,
         title: data.title || '',
         author: data.authors?.map((a: any) => a.name).join(', ') || '',
+        authorAsin: data.authors?.[0]?.asin || undefined,
         narrator: data.narrators?.map((n: any) => n.name).join(', ') || '',
         description: data.description || data.summary || '',
         coverArtUrl: data.image || '',
@@ -721,6 +869,15 @@ export class AudibleService {
 
         result.author = result.author.replace(/^By:\s*/i, '').replace(/^Written by:\s*/i, '').trim();
         logger.info(` Author from HTML: "${result.author}"`);
+      }
+
+      // Author ASIN - extract from the first author link
+      if (!result.authorAsin) {
+        const firstAuthorHref = $('a[href*="/author/"]').first().attr('href') || '';
+        const authorAsinMatch = firstAuthorHref.match(/\/author\/[^\/]+\/([A-Z0-9]{10})/);
+        if (authorAsinMatch) {
+          result.authorAsin = authorAsinMatch[1];
+        }
       }
 
       // Narrator - try multiple approaches (only in product details area)

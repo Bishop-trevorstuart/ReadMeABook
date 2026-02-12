@@ -4,7 +4,7 @@
  */
 
 import { INotificationProvider, NotificationPayload, ProviderMetadata } from '../INotificationProvider';
-import { getEventMeta, type NotificationSeverity, type NotificationPriority } from '@/lib/constants/notification-events';
+import { getEventMeta, getEventTitle, type NotificationSeverity, type NotificationPriority } from '@/lib/constants/notification-events';
 
 export interface NtfyConfig {
   serverUrl?: string;
@@ -83,8 +83,7 @@ export class NtfyProvider implements INotificationProvider {
   }
 
   private formatMessage(payload: NotificationPayload): { title: string; message: string } {
-    const { event, title, author, userName, message } = payload;
-    const meta = getEventMeta(event);
+    const { event, title, author, userName, message, requestType } = payload;
 
     const isIssue = event === 'issue_reported';
     const messageLines = [
@@ -98,7 +97,7 @@ export class NtfyProvider implements INotificationProvider {
     }
 
     return {
-      title: meta.title,
+      title: getEventTitle(event, requestType),
       message: messageLines.join('\n'),
     };
   }

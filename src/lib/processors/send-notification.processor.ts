@@ -18,7 +18,7 @@ export type { SendNotificationPayload } from '../services/job-queue.service';
  * Calls NotificationService to send notifications to all enabled backends
  */
 export async function processSendNotification(payload: SendNotificationPayload): Promise<void> {
-  const { event, requestId, issueId, title, author, userName, message, jobId } = payload;
+  const { event, requestId, issueId, title, author, userName, message, requestType, jobId } = payload;
 
   const logger = RMABLogger.forJob(jobId, 'SendNotification');
 
@@ -34,6 +34,7 @@ export async function processSendNotification(payload: SendNotificationPayload):
       author,
       userName,
       message,
+      requestType,
       timestamp: new Date(),
     });
 

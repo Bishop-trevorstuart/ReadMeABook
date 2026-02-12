@@ -4,7 +4,7 @@
  */
 
 import { INotificationProvider, NotificationPayload, ProviderMetadata } from '../INotificationProvider';
-import { getEventMeta, type NotificationPriority } from '@/lib/constants/notification-events';
+import { getEventMeta, getEventTitle, type NotificationPriority } from '@/lib/constants/notification-events';
 
 export interface PushoverConfig {
   userKey: string;
@@ -77,12 +77,13 @@ export class PushoverProvider implements INotificationProvider {
   }
 
   private formatMessage(payload: NotificationPayload): { title: string; message: string } {
-    const { event, title, author, userName, message } = payload;
+    const { event, title, author, userName, message, requestType } = payload;
     const meta = getEventMeta(event);
+    const resolvedTitle = getEventTitle(event, requestType);
 
     const isIssue = event === 'issue_reported';
     const messageLines = [
-      `${meta.emoji} ${meta.title}`,
+      `${meta.emoji} ${resolvedTitle}`,
       '',
       `\u{1F4DA} ${title}`,
       `\u270D\uFE0F ${author}`,
@@ -94,7 +95,7 @@ export class PushoverProvider implements INotificationProvider {
     }
 
     return {
-      title: meta.title,
+      title: resolvedTitle,
       message: messageLines.join('\n'),
     };
   }

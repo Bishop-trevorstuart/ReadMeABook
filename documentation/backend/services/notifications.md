@@ -33,9 +33,15 @@ model NotificationBackend {
 |-------|---------|------------------------|
 | request_pending_approval | User creates request | Request needs admin approval |
 | request_approved | Admin approves OR auto-approval | Request approved (manual or auto) |
-| request_available | Plex/ABS scan completes | Audiobook available in library |
+| request_available | Plex/ABS scan or ebook download completes | Request available (title resolves by type) |
 | request_error | Download/import fails | Request failed at any stage |
 | issue_reported | User reports issue | User reports problem with available audiobook |
+
+**Dynamic Titles:** Events can define `titleByRequestType` in `notification-events.ts` for type-specific titles.
+- `request_available` + `requestType: 'audiobook'` → "Audiobook Available"
+- `request_available` + `requestType: 'ebook'` → "Ebook Available"
+- `request_available` + no requestType → "Request Available" (fallback)
+- Use `getEventTitle(event, requestType?)` to resolve titles in providers
 
 ## Notification Triggers
 
@@ -60,9 +66,13 @@ model NotificationBackend {
 - Approve (with or without pre-selected torrent): After job triggered → request_approved
 - Deny: No notification
 
-**Request Available (processors: scan-plex, plex-recently-added)**
-- After `status: 'available'` update → request_available
+**Audiobook Available (processors: scan-plex, plex-recently-added)**
+- After `status: 'available'` update → request_available (requestType: 'audiobook')
 - Includes user info in query (plexUsername)
+
+**Ebook Available (processor: organize-files)**
+- After ebook `status: 'downloaded'` (terminal) → request_available (requestType: 'ebook')
+- Ebooks don't transition to 'available' via Plex matching
 
 **Request Error (processors: monitor-download, organize-files)**
 - After `status: 'failed'` or `status: 'warn'` update → request_error
@@ -166,6 +176,7 @@ model NotificationBackend {
   author: string,
   userName: string,
   message?: string,
+  requestType?: string, // 'audiobook' | 'ebook' — drives type-specific titles
   timestamp: Date
 }
 ```
@@ -174,7 +185,7 @@ model NotificationBackend {
 - Calls NotificationService.sendNotification()
 - Non-blocking error handling (logs but doesn't throw)
 
-**Queue Method:** `addNotificationJob(event, requestId, title, author, userName, message?)`
+**Queue Method:** `addNotificationJob(event, requestId, title, author, userName, message?, requestType?)`
 
 ## Architecture
 
@@ -203,9 +214,14 @@ src/lib/services/notification/
 **ProviderMetadata:** `{ type, displayName, description, iconLabel, iconColor, configFields[] }`
 **ProviderConfigField:** `{ name, label, type, required, placeholder?, defaultValue?, options? }`
 
-**Helper functions:**
+**Helper functions (notification.service.ts):**
 - `getRegisteredProviderTypes(): string[]` — all registered type keys
 - `getAllProviderMetadata(): ProviderMetadata[]` — metadata for all providers
+
+**Helper functions (notification-events.ts):**
+- `getEventMeta(event)` — raw event metadata (label, title, emoji, severity, priority)
+- `getEventTitle(event, requestType?)` — resolved title (checks `titleByRequestType` first, falls back to `title`)
+- `getEventLabel(event)` — human-readable label for UI
 
 **API Endpoint:** `GET /api/admin/notifications/providers` — returns all provider metadata (admin-only)
 
@@ -221,10 +237,10 @@ src/lib/services/notification/
 No UI changes, no API route changes, no Zod schema changes needed — the UI renders dynamically from provider metadata.
 
 **Adding New Event (e.g., download_complete):**
-1. Add 'download_complete' to NotificationEvent enum
-2. Add to event labels in UI
-3. Add trigger point in processor
-4. Add message formatting in Discord/Pushover formatters
+1. Add entry to `NOTIFICATION_EVENTS` in `notification-events.ts` (label, title, emoji, severity, priority)
+2. Optionally add `titleByRequestType` for type-specific titles
+3. Add trigger point in processor, passing `requestType` if relevant
+4. Providers auto-resolve titles via `getEventTitle()` — no per-provider changes needed
 
 ## Tech Stack
 - Bull (job queue)

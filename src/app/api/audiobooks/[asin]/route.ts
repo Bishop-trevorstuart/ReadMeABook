@@ -46,6 +46,7 @@ export async function GET(
     return NextResponse.json({
       success: true,
       audiobook,
+      audibleBaseUrl: audibleService.getBaseUrl(),
     });
   } catch (error) {
     logger.error('Failed to get audiobook details', { error: error instanceof Error ? error.message : String(error) });

@@ -13,11 +13,12 @@ export type NotificationPriority = 'normal' | 'high';
  * Central registry of notification events.
  *
  * Each entry defines:
- * - `label`:    Human-readable name shown in the UI
- * - `title`:    Title used in notification messages
- * - `emoji`:    Emoji prefix for notification titles
- * - `severity`: Drives provider formatting (colors, Apprise types, ntfy tags)
- * - `priority`: Drives notification urgency (Pushover/ntfy priority levels)
+ * - `label`:              Human-readable name shown in the UI
+ * - `title`:              Default title used in notification messages
+ * - `titleByRequestType`: Optional map of request-type-specific titles (e.g. audiobook → "Audiobook Available")
+ * - `emoji`:              Emoji prefix for notification titles
+ * - `severity`:           Drives provider formatting (colors, Apprise types, ntfy tags)
+ * - `priority`:           Drives notification urgency (Pushover/ntfy priority levels)
  */
 export const NOTIFICATION_EVENTS = {
   request_pending_approval: {
@@ -35,8 +36,12 @@ export const NOTIFICATION_EVENTS = {
     priority: 'normal' as const,
   },
   request_available: {
-    label: 'Audiobook Available',
-    title: 'Audiobook Available',
+    label: 'Request Available',
+    title: 'Request Available',
+    titleByRequestType: {
+      audiobook: 'Audiobook Available',
+      ebook: 'Ebook Available',
+    } as Record<string, string>,
     emoji: '\u{1F389}',
     severity: 'success' as const,
     priority: 'high' as const,
@@ -69,6 +74,20 @@ export type NotificationEventMeta = (typeof NOTIFICATION_EVENTS)[NotificationEve
 /** Helper: get event metadata by key */
 export function getEventMeta(event: NotificationEvent) {
   return NOTIFICATION_EVENTS[event];
+}
+
+/**
+ * Helper: get the resolved notification title for an event.
+ * If the event has a `titleByRequestType` map and a matching requestType is provided,
+ * returns the type-specific title. Otherwise falls back to the default `title`.
+ */
+export function getEventTitle(event: NotificationEvent, requestType?: string): string {
+  const meta = NOTIFICATION_EVENTS[event];
+  if (requestType && 'titleByRequestType' in meta) {
+    const typeTitle = (meta as typeof meta & { titleByRequestType: Record<string, string> }).titleByRequestType[requestType];
+    if (typeTitle) return typeTitle;
+  }
+  return meta.title;
 }
 
 /** Helper: get the human-readable label for an event */

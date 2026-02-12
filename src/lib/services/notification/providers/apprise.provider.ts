@@ -4,7 +4,7 @@
  */
 
 import { INotificationProvider, NotificationPayload, ProviderMetadata } from '../INotificationProvider';
-import { getEventMeta, type NotificationSeverity } from '@/lib/constants/notification-events';
+import { getEventMeta, getEventTitle, type NotificationSeverity } from '@/lib/constants/notification-events';
 
 export interface AppriseConfig {
   serverUrl: string;
@@ -108,8 +108,7 @@ export class AppriseProvider implements INotificationProvider {
   }
 
   private formatMessage(payload: NotificationPayload): { title: string; body: string } {
-    const { event, title, author, userName, message } = payload;
-    const meta = getEventMeta(event);
+    const { event, title, author, userName, message, requestType } = payload;
 
     const isIssue = event === 'issue_reported';
     const messageLines = [
@@ -123,7 +122,7 @@ export class AppriseProvider implements INotificationProvider {
     }
 
     return {
-      title: meta.title,
+      title: getEventTitle(event, requestType),
       body: messageLines.join('\n'),
     };
   }
