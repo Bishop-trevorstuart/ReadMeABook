@@ -1,38 +1,75 @@
 # Audiobookshelf Tag Sync
 
 ### 💡 The "Why"
-In a multi-user library, "Availability" is only half the story. The real question is: **"Who is this book for?"**
+In a multi-user library, "Availability" is only half the story. The real question is: "Who is this book for?"
 
-Audiobookshelf is a powerful library organizer, but it doesn't natively know which of your users requested which book in RMAB. This script bridges that gap by automatically tagging books with `Requester: [Username]`. This allows:
-* **Personalized Filtering:** Users can filter the ABS library to see only their personal requests.
-* **Custom Collections:** Admins can build smart collections based on user demand.
-* **Context:** Instant visibility in the ABS UI into why a book was added.
+Audiobookshelf (ABS) is a powerful library organizer, but it doesn't natively know which of your users requested which book in ReadMeABook (RMAB). This script bridges that gap by automatically tagging books with "Requester: [Username]". This allows:
+* Personalized Filtering: Users can filter the ABS library to see only their personal requests.
+* Custom Collections: Admins can build smart collections based on user demand.
+* Context: Instant visibility in the ABS UI into why a book was added.
 
 ### 🛠️ Features
-* **Smart User Mapping:** Cross-matches users across platforms to ensure accurate tagging.
-    * **Unified Email Linker:** Uses the email address as the primary unique identifier to bridge RMAB/Plex and ABS/OIDC accounts.
-    * **Fallback Logic:** If an email match isn't found, it gracefully falls back to the Plex username.
-* **Data Preservation:** Uses a deep-merge strategy to ensure existing ABS genres, metadata, and manual tags are never overwritten.
-* **Multi-User Ready:** Designed to handle multiple requesters per book (anticipating future RMAB updates).
+* Smart User Mapping: Matches users across platforms to bridge identities between RMAB and ABS.
+    * Unified Email Linker: Uses the email address as the primary identifier to bridge RMAB/Plex and ABS/OIDC accounts.
+    * Fallback Logic: If an email match isn't found, it gracefully falls back to the Plex username provided by RMAB.
+* Data Preservation: Uses a deep-merge strategy to ensure existing ABS metadata and genres are never overwritten.
+* Multi-User Ready: Handles multiple requesters per book.
 
-### ⚙️ Configuration
-The script looks for the following Environment Variables:
-* **ABS_URL:** Your Audiobookshelf URL (e.g., https://abs.yourdomain.com)
-* **ABS_TOKEN:** Your ABS API Token.
-* **RMAB_CONTAINER:** Name of your RMAB Docker container (default: readmeabook).
+### 📋 Requirements
+* ASIN Metadata: The script matches books using the ASIN. Ensure your ABS items have the ASIN field populated in their metadata.
+* Python 3.x: Must be installed on the host machine.
+* Docker Permissions: The host user must have permission to execute 'docker exec'.
 
-### 🚀 Quick Start
-Run this command from the directory where you saved `sync_tags.py`. Adjust the values to match your setup:
+### ⚙️ Step 1: Environment Setup
+We align with the standard RMAB configuration directory for script storage.
 
-ABS_URL="https://abs.yourdomain.com" ABS_TOKEN="your_token" RMAB_CONTAINER="readmeabook" python3 sync_tags.py
+1. Navigate to your RMAB persistent storage directory on the host(where you mounted the config volume /app/config in the compose):
+```bash
+cd /opt/appdata/RMAB
 
-### 📂 Recommended Placement
-For consistency with the RMAB environment, it is recommended to store this script in your config directory:
-`/app/config/scripts/abs-tag-sync/`
+```
 
-### 🤖 Automation (Cron)
-To keep your library synced automatically, add this entry to your crontab (`crontab -e`):
+2. Create the script environment:
 
-*/30 * * * * ABS_URL="https://abs.yourdomain.com" ABS_TOKEN="your_token" /usr/bin/python3 /app/config/scripts/abs-tag-sync/sync_tags.py >> /app/config/scripts/abs-sync.log 2>&1
+```bash
+mkdir -p scripts/abs-tag-sync && cd scripts/abs-tag-sync
+python3 -m venv venv
+./venv/bin/pip install requests
 
-> **Note:** Ensure the user running the cron job has permissions to execute `docker exec`.
+```
+
+### ⚙️ Step 2: Download the Script
+
+Download the sync script into the directory:
+
+```bash
+curl -O https://raw.githubusercontent.com/kikootwo/ReadMeABook/main/scripts/abs-tag-sync/sync_tags.py
+chmod +x sync_tags.py
+
+```
+
+### ⚙️ Step 3: Manual Test
+
+Run the script manually to ensure everything is connected correctly.
+(Replace the values in quotes with your actual ABS URL and API Token)
+
+```bash
+ABS_URL="https://abs.yourdomain.com" ABS_TOKEN="your_token" RMAB_CONTAINER="readmeabook" ./venv/bin/python3 sync_tags.py
+
+```
+
+### 🤖 Step 4: Automation (Cron)
+
+To keep your library synced, add this to your system's crontab (crontab -e):
+
+```bash
+*/30 * * * * ABS_URL="https://your-url" ABS_TOKEN="your-token" /app/config/scripts/abs-tag-sync/venv/bin/python3 /app/config/scripts/abs-tag-sync/sync_tags.py >> /app/config/scripts/abs-sync.log 2>&1
+
+```
+
+### 📂 Configuration Breakdown
+
+* ABS_URL: Your Audiobookshelf URL.
+* ABS_TOKEN: Your ABS API Token (Settings > Users > [User] > API Token).
+* RMAB_CONTAINER: Your RMAB Docker container name (Default: "readmeabook").
+* venv/bin/python3: Path to the isolated Python environment created in Step 1.
